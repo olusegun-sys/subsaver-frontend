@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepare": "chmod +x node_modules/.bin/vite || true"
   },
   "dependencies": {
     "@mono.co/connect.js": "^2.2.0",
