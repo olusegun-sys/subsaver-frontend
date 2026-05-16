@@ -187,6 +187,9 @@ export default function Dashboard() {
   const [hasConnectedBank, setHasConnectedBank] = useState(false);
   const navigate = useNavigate();
 
+  // LIVE BACKEND URL - Replace with your actual Render URL if different
+  const BACKEND_URL = 'https://subsaver-backend-3eqa.onrender.com';
+
   const getAllSubscriptions = () => {
     return [
       { id: '1', merchant: 'Netflix', amount: 15.99, lastCharge: '2026-03-25', daysSinceLastCharge: 20, flagged: false },
@@ -478,7 +481,7 @@ export default function Dashboard() {
           const monoCode = response.code;
           if (monoCode) {
             try {
-              const exchange = await fetch('http://localhost:3001/api/exchange-mono-code', {
+              const exchange = await fetch(`${BACKEND_URL}/api/exchange-mono-code`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mono_code: monoCode }),
