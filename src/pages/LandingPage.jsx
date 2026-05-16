@@ -82,27 +82,21 @@ export default function LandingPage() {
                 <Wallet className="w-10 h-10 text-blue-600" />
               </div>
               <h3 className="text-xl font-bold mb-3">1. Connect Your Bank</h3>
-              <p className="text-gray-600">
-                Securely link your bank account via Mono. Takes less than 60 seconds.
-              </p>
+              <p className="text-gray-600">Securely link your bank account. Takes less than 60 seconds.</p>
             </div>
             <div className="text-center">
               <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
                 <Eye className="w-10 h-10 text-blue-600" />
               </div>
               <h3 className="text-xl font-bold mb-3">2. See Everything</h3>
-              <p className="text-gray-600">
-                Subsaver scans your transactions and shows all subscriptions in one place.
-              </p>
+              <p className="text-gray-600">Subsaver scans your transactions and shows all subscriptions in one place.</p>
             </div>
             <div className="text-center">
               <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
                 <Zap className="w-10 h-10 text-blue-600" />
               </div>
               <h3 className="text-xl font-bold mb-3">3. Cancel & Save</h3>
-              <p className="text-gray-600">
-                Spot forgotten subscriptions, cancel with one click, save money immediately.
-              </p>
+              <p className="text-gray-600">Spot forgotten subscriptions, cancel with one click, save money immediately.</p>
             </div>
           </div>
         </div>
@@ -111,13 +105,11 @@ export default function LandingPage() {
       {/* Premium Section */}
       <section className="bg-gray-50 py-24 px-4">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-4xl font-bold text-center mb-12">
-            Get more from your finances with Subsaver Premium
-          </h2>
+          <h2 className="text-4xl font-bold text-center mb-12">Get more from your finances with Subsaver Premium</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {/* Free Plan */}
             <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <h3 className="text-xl font-bold text-gray-500 mb-6">Without Premium</h3>
+              <h3 className="text-xl font-bold text-gray-500 mb-6">Free</h3>
               <ul className="space-y-4">
                 <li className="flex items-center gap-3 text-gray-600">
                   <CheckCircle className="w-5 h-5 text-gray-400" /> Account linking
@@ -128,9 +120,6 @@ export default function LandingPage() {
                 <li className="flex items-center gap-3 text-gray-600">
                   <CheckCircle className="w-5 h-5 text-gray-400" /> Spend tracking
                 </li>
-                <li className="flex items-center gap-3 text-gray-400">
-                  <CheckCircle className="w-5 h-5" /> Up to 5 subscriptions
-                </li>
               </ul>
             </div>
             {/* Premium Plan */}
@@ -138,19 +127,19 @@ export default function LandingPage() {
               <div className="inline-block bg-blue-500 text-xs px-3 py-1 rounded-full mb-4">
                 ?2,000/month
               </div>
-              <h3 className="text-xl font-bold mb-6">With Premium</h3>
+              <h3 className="text-xl font-bold mb-6">Premium</h3>
               <ul className="space-y-4">
                 <li className="flex items-center gap-3">
                   <CheckCircle className="w-5 h-5" /> Unlimited subscriptions
                 </li>
                 <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5" /> Renewal reminders via email/SMS
+                  <CheckCircle className="w-5 h-5" /> Renewal reminders
                 </li>
                 <li className="flex items-center gap-3">
                   <CheckCircle className="w-5 h-5" /> Spending analytics
                 </li>
                 <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5" /> Family sharing
+                  <CheckCircle className="w-5 h-5" /> Priority support
                 </li>
               </ul>
             </div>
@@ -160,7 +149,7 @@ export default function LandingPage() {
               onClick={handleGetStarted}
               className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
             >
-              Explore Premium
+              Get Started
             </button>
           </div>
         </div>
@@ -192,9 +181,6 @@ export default function LandingPage() {
       <footer className="bg-gray-900 text-gray-400 py-12 px-4">
         <div className="max-w-6xl mx-auto text-center">
           <p>© 2026 Subsaver. All rights reserved.</p>
-          <p className="text-xs mt-2">
-            Banking services provided by Mono. Subscription data is read-only — we cannot move your money.
-          </p>
         </div>
       </footer>
     </div>
