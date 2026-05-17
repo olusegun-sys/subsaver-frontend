@@ -2,7 +2,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import Dashboard from './pages/Dashboard';
-// import LandingPage from './pages/LandingPage'; // Temporarily disabled due to encoding issues
+import LandingPage from './pages/LandingPage';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import ToastContainer from './components/Toast';
 
 function Login() {
@@ -94,29 +96,6 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
-// Temporary landing page replacement while fixing encoding issues
-function TempLanding() {
-  const navigate = useNavigate();
-  
-  useEffect(() => {
-    // Auto-redirect to login after 2 seconds
-    const timer = setTimeout(() => {
-      navigate('/login');
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [navigate]);
-  
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="bg-white p-8 rounded shadow-md text-center">
-        <h1 className="text-3xl font-bold text-blue-600 mb-4">SubSaver</h1>
-        <p className="text-gray-600 mb-4">Redirecting to login...</p>
-        <div className="animate-pulse">Loading</div>
-      </div>
-    </div>
-  );
-}
-
 function PublicRoute({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -144,9 +123,11 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<PublicRoute><TempLanding /></PublicRoute>} />
+        <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
       </Routes>
       <ToastContainer />
     </Router>
