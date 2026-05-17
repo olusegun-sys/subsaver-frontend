@@ -114,8 +114,10 @@ function PublicRoute({ children }) {
 
   if (loading) return <div className="min-h-screen bg-gray-100 flex items-center justify-center">Loading...</div>;
   
+  // If user is logged in, send them to dashboard
   if (user) return <Navigate to="/dashboard" replace />;
   
+  // If not logged in, show the landing page
   return children;
 }
 
@@ -123,9 +125,16 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* Landing page - only visible when NOT logged in */}
         <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
+        
+        {/* Login page - separate from landing */}
         <Route path="/login" element={<Login />} />
+        
+        {/* Dashboard - only visible when logged in */}
         <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        
+        {/* Legal pages - accessible to everyone */}
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsOfService />} />
       </Routes>
