@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import Dashboard from './pages/Dashboard';
+import LandingPage from './pages/LandingPage';
 import ToastContainer from './components/Toast';
 
 function Login() {
@@ -93,11 +94,34 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
+function PublicRoute({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser()
+      .then(({ data }) => {
+        setUser(data.user);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error('Auth check failed:', error);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <div className="min-h-screen bg-gray-100 flex items-center justify-center">Loading...</div>;
+  
+  if (user) return <Navigate to="/dashboard" replace />;
+  
+  return children;
+}
+
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
       </Routes>
