@@ -2,70 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Modern UI Polish - Only visual, no functionality changes */
-
+/* WHY: Modern geometric sans for the whole app */
 body {
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Smooth card hover effects */
-.bg-white {
-  transition: all 0.2s ease;
-}
-
-.bg-white:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 20px 25px -12px rgba(0, 0, 0, 0.1);
-}
-
-/* Modern button styling - preserves all functionality */
-button {
-  transition: all 0.2s ease;
-  font-weight: 500;
-}
-
-button:active {
-  transform: scale(0.98);
-}
-
-/* Custom scrollbar */
+/* WHY: Slim blue-tinted scrollbar matching the brand */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #bfdbfe;
   border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: #93c5fd;
 }
 
-/* Status badge animations */
-.bg-green-100 {
-  transition: all 0.2s ease;
+/* WHY: Subtle fade-in for premium transitions */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
 
-/* Table row hover effect */
-tbody tr {
-  transition: background-color 0.15s ease;
+/* WHY: Section header letterspacing (Rocket Money-inspired) */
+.section-label {
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
 }
 
-/* Loading spinner animation */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
+/* WHY: Prevent text overflow on long merchant names across all breakpoints */
+.truncate-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
