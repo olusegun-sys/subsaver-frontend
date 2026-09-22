@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import {
   LogOut, X, Plus, CreditCard, RefreshCw, AlertTriangle,
-  ChevronRight, Search, SlidersHorizontal, Bell, Wallet
+  ChevronRight, Search, SlidersHorizontal, Bell, Wallet,
+  Calendar, TrendingUp, Circle
 } from 'lucide-react';
 import { toast } from '../components/Toast';
 
@@ -69,11 +70,28 @@ const getCadence = (days) => {
   return 'Yearly';
 };
 
-// WHY: Blue-accented modal matching the SubSaver brand
+// WHY: Compute the number of days in the cadence cycle (7 / 30 / 90 / 365)
+const getCadenceDays = (daysSinceLastCharge) => {
+  if (!daysSinceLastCharge) return 30;
+  if (daysSinceLastCharge <= 10) return 7;
+  if (daysSinceLastCharge <= 45) return 30;
+  if (daysSinceLastCharge <= 100) return 90;
+  return 365;
+};
+
+// WHY: Estimate days until next charge from last charge + cadence.
+// Uses modulo so it works even if the subscription is already overdue.
+const getDaysUntilRenewal = (daysSinceLastCharge) => {
+  const cadence = getCadenceDays(daysSinceLastCharge);
+  const positionInCycle = daysSinceLastCharge % cadence;
+  const daysLeft = cadence - positionInCycle;
+  return daysLeft;
+};
+
+// WHY: Focused confirmation modal — no external links, no cancellation guide.
+// Keeps the user inside Subsaver and treats the modal as the final decision point.
 function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
   if (!sub) return null;
-
-  const emailBody = `Subject: Cancellation Request\n\nHi ${sub.merchant} Support,\n\nPlease cancel my subscription associated with this email.\n\nThank you.`;
 
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) onClose();
@@ -84,9 +102,11 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
       onClick={handleOverlayClick}
       className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
     >
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl shadow-slate-900/25 relative overflow-hidden max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl shadow-slate-900/25 relative overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Top gradient accent */}
         <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 flex-shrink-0"></div>
 
+        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors z-10"
@@ -96,50 +116,48 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
         </button>
 
         <div className="p-6 sm:p-8 overflow-y-auto">
-          <div className="flex items-center gap-3 mb-4 pr-10">
+          {/* Merchant avatar + heading */}
+          <div className="flex items-center gap-3 mb-5 pr-10">
             <div className={`w-12 h-12 rounded-2xl ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-lg flex-shrink-0`}>
               {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 truncate">
-                Cancel {sanitizeText(sub.merchant)}
+                Cancel {sanitizeText(sub.merchant)}?
               </h2>
               <p className="text-xs sm:text-sm text-slate-500">
-                We'll guide you through the steps
+                {formatAmount(sub.amount)} / month · {getCadence(sub.daysSinceLastCharge)}
               </p>
             </div>
           </div>
 
-          <div className="mb-6">
-            <p className="section-label mb-3">Cancellation Guide</p>
-            <ol className="space-y-2.5 text-sm text-slate-700">
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">1</span>
-                <span>Log in to your <strong className="text-slate-900">{sanitizeText(sub.merchant)}</strong> account</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">2</span>
-                <span>Go to <strong className="text-slate-900">Settings</strong> or <strong className="text-slate-900">Account</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">3</span>
-                <span>Find <strong className="text-slate-900">Subscriptions</strong> or <strong className="text-slate-900">Billing</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">4</span>
-                <span>Click <strong className="text-slate-900">Cancel Subscription</strong> and confirm</span>
-              </li>
-            </ol>
-          </div>
+          {/* Confirmation copy */}
+          <p className="text-sm text-slate-600 leading-relaxed mb-5">
+            Are you sure you want to cancel this subscription? We'll mark it as cancelled and stop tracking it.
+          </p>
 
-          <div className="mb-6">
-            <p className="section-label mb-3">Email Template</p>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs sm:text-sm text-slate-700 whitespace-pre-line font-mono leading-relaxed">
-              {emailBody}
+          {/* Detail summary card for context */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 space-y-2.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Merchant</span>
+              <span className="font-semibold text-slate-900 truncate pl-3">
+                {sanitizeText(sub.merchant)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Amount</span>
+              <span className="font-semibold text-slate-900">
+                {formatAmount(sub.amount)} / month
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Last Charge</span>
+              <span className="font-semibold text-slate-900">{sub.lastCharge}</span>
             </div>
           </div>
 
-          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+          {/* Actions */}
+          <div className="flex flex-col-reverse sm:flex-row gap-3">
             <button
               onClick={onClose}
               className="flex-1 bg-white border border-slate-300 text-slate-700 font-medium py-3 px-4 rounded-xl hover:bg-slate-50 transition-colors"
@@ -155,9 +173,132 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
                   : 'bg-red-600 hover:bg-red-700 hover:shadow-lg hover:shadow-red-600/30'
               }`}
             >
-              {isSaving ? "Saving..." : "Confirm Cancellation"}
+              {isSaving ? 'Cancelling…' : 'Confirm Cancellation'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// WHY: Alerts side panel — lists upcoming renewals in the next 7 days.
+// Purely read-only from existing subscriptions data. Cancel button opens the same modal.
+function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
+  // WHY: Prevent rendering when closed so no DOM overhead.
+  if (!isOpen) return null;
+
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return (
+    <div
+      onClick={handleOverlayClick}
+      className="fixed inset-0 z-[900] bg-slate-900/50 backdrop-blur-sm flex justify-end animate-fade-in"
+    >
+      <div className="bg-white w-full max-w-md h-full shadow-2xl overflow-y-auto flex flex-col">
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-slate-200/70 px-6 py-4 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center">
+              <Bell className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Alerts</h3>
+              <p className="text-xs text-slate-500">Upcoming renewals in 7 days</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+            aria-label="Close alerts"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 p-6">
+          {upcomingRenewals.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                <Circle className="w-6 h-6 text-emerald-500 fill-current" />
+              </div>
+              <p className="text-sm font-semibold text-slate-900 mb-1">All clear</p>
+              <p className="text-xs text-slate-500">No renewals in the next 7 days.</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary pill */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">
+                  Next 7 days
+                </p>
+                <p className="text-sm text-blue-900">
+                  <span className="font-bold">{upcomingRenewals.length}</span> renewal{upcomingRenewals.length > 1 ? 's' : ''} coming up.
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Total: <span className="font-semibold">{formatAmount(upcomingRenewals.reduce((sum, s) => sum + s.amount, 0))}</span>
+                </p>
+              </div>
+
+              {/* Upcoming list */}
+              <div className="space-y-2.5">
+                {upcomingRenewals.map(sub => (
+                  <div
+                    key={sub.id}
+                    className="bg-white border border-slate-200/70 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-full ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+                        {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">
+                          {sanitizeText(sub.merchant)}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 text-xs">
+                          <Calendar className="w-3 h-3 text-blue-500" />
+                          <span className="text-slate-500">
+                            Renews in <span className="font-semibold text-blue-600">
+                              {getDaysUntilRenewal(sub.daysSinceLastCharge)} day{getDaysUntilRenewal(sub.daysSinceLastCharge) !== 1 ? 's' : ''}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold text-slate-900 text-sm">
+                          {formatAmount(sub.amount)}
+                        </p>
+                        <button
+                          onClick={() => {
+                            onCancelClick(sub);
+                            onClose();
+                          }}
+                          className="text-xs font-medium text-red-600 hover:text-red-700 mt-1"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Premium upsell hint */}
+              <div className="mt-6 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-5 text-white">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-4 h-4" />
+                  <p className="text-xs font-semibold uppercase tracking-wider">Premium</p>
+                </div>
+                <p className="text-sm font-semibold mb-1">Never miss a renewal</p>
+                <p className="text-xs text-blue-100 leading-relaxed">
+                  Get SMS and email reminders before you're charged. Available on Subsaver Premium.
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -173,6 +314,13 @@ export default function Dashboard() {
   const [mode, setMode] = useState('demo');
   const [hasConnectedBank, setHasConnectedBank] = useState(false);
   const navigate = useNavigate();
+
+  // WHY: Search filter state — client-side only, does not touch the DB.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+
+  // WHY: Alerts panel toggle — purely visual state.
+  const [showAlerts, setShowAlerts] = useState(false);
 
   const BACKEND_URL = 'https://subsaver-backend-3eqa.onrender.com';
 
@@ -232,8 +380,7 @@ export default function Dashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // WHY: Await the delete AND check its error. Previously this was fire-and-forget,
-    // so if delete failed silently, insert still ran → duplicate token rows accumulated.
+    // WHY: Await delete + check error so duplicates can't accumulate.
     const { error: deleteError } = await supabase
       .from('user_tokens')
       .delete()
@@ -245,7 +392,6 @@ export default function Dashboard() {
       return;
     }
 
-    // WHY: Now insert exactly one fresh token row for this user.
     const { error: insertError } = await supabase
       .from('user_tokens')
       .insert({ user_id: user.id, access_token: token });
@@ -457,9 +603,7 @@ export default function Dashboard() {
       }
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // WHY: .maybeSingle() panics if >1 row exists (PGRST116). Order by
-        // created_at DESC and limit(1) so we ALWAYS get the most recent token
-        // — duplicates in the table can never crash the DB fallback again.
+        // WHY: Deterministic query — never panics on duplicate rows (PGRST116 fix).
         const { data: tokenRows, error: tokenError } = await supabase
           .from('user_tokens')
           .select('access_token, created_at')
@@ -469,7 +613,6 @@ export default function Dashboard() {
 
         if (tokenError) console.error('Error loading token from database:', tokenError);
 
-        // WHY: Take the first (most recent) row if it exists; null otherwise.
         const tokenData = tokenRows && tokenRows.length > 0 ? tokenRows[0] : null;
 
         if (tokenData?.access_token) {
@@ -486,7 +629,6 @@ export default function Dashboard() {
     init();
   }, []);
 
-  // WHY: Spinner-only loading state — no text, matches premium SaaS feel
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -495,10 +637,28 @@ export default function Dashboard() {
     );
   }
 
+  // WHY: Base lists split by flagged status (sacred feature #1 logic, unchanged).
   const flagged = subscriptions.filter(s => s.flagged === true);
   const active = subscriptions.filter(s => s.flagged !== true);
   const totalMonthly = subscriptions.reduce((sum, s) => sum + s.amount, 0);
   const potentialSavings = flagged.reduce((sum, s) => sum + s.amount, 0);
+
+  // WHY: Apply search filter on top of the derived lists — never mutates underlying data.
+  const searchLower = searchQuery.trim().toLowerCase();
+  const flaggedFiltered = searchLower
+    ? flagged.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : flagged;
+  const activeFiltered = searchLower
+    ? active.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : active;
+
+  // WHY: Compute upcoming renewals (next 7 days) from existing subscriptions only.
+  const upcomingRenewals = subscriptions
+    .filter(s => getDaysUntilRenewal(s.daysSinceLastCharge) <= 7)
+    .sort((a, b) => getDaysUntilRenewal(a.daysSinceLastCharge) - getDaysUntilRenewal(b.daysSinceLastCharge));
+
+  const alertsCount = upcomingRenewals.length;
+  const isSearching = searchLower.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/60 via-white to-white">
@@ -575,8 +735,7 @@ export default function Dashboard() {
                   <Plus className="w-5 h-5" />
                 </button>
               ) : (
-                <button
-                  onClick={handleShowDemoMode}
+                <button                  onClick={handleShowDemoMode}
                   className="p-2 rounded-full bg-slate-100 text-slate-700 transition"
                   aria-label="Demo Mode"
                 >
@@ -597,7 +756,7 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in">
 
-        {/* Header + sort pills */}
+        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-1">
             Your Subscriptions
@@ -607,23 +766,73 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Pill sort bar (visual only) */}
-        <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1 -mx-1 px-1">
+        {/* Pill toolbar — Sort (visual), Search (functional), Alerts (functional with badge) */}
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
           <button className="flex-shrink-0 inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25">
             <SlidersHorizontal className="w-3.5 h-3.5" />
             Sort by Type
           </button>
-          <button className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition">
+
+          {/* WHY: Search pill toggles a search bar below. Active style when open or filtering. */}
+          <button
+            onClick={() => setShowSearch(prev => !prev)}
+            className={`flex-shrink-0 inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition ${
+              showSearch || isSearching
+                ? 'bg-blue-50 border border-blue-200 text-blue-700'
+                : 'bg-white border border-slate-200 text-slate-700 hover:border-slate-300'
+            }`}
+          >
             <Search className="w-3.5 h-3.5" />
             Search
           </button>
-          <button className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition">
+
+          {/* WHY: Alerts pill opens the side panel. Badge shows count of upcoming renewals. */}
+          <button
+            onClick={() => setShowAlerts(true)}
+            className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition relative"
+          >
             <Bell className="w-3.5 h-3.5" />
             Alerts
+            {alertsCount > 0 && (
+              <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                {alertsCount}
+              </span>
+            )}
           </button>
         </div>
 
-        {/* Hero band - blue brand */}
+        {/* WHY: Collapsible search bar — only renders when Search pill is active. */}
+        {showSearch && (
+          <div className="mb-6 animate-fade-in">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search subscriptions by merchant name..."
+                className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                autoFocus
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {isSearching && (
+              <p className="text-xs text-slate-500 mt-2 pl-1">
+                Showing <span className="font-semibold text-slate-700">{flaggedFiltered.length + activeFiltered.length}</span> result{flaggedFiltered.length + activeFiltered.length !== 1 ? 's' : ''} for "{searchQuery}"
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Hero band */}
         <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-3xl p-6 sm:p-8 mb-6 shadow-xl shadow-blue-600/20 text-white overflow-hidden relative">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
           <div className="relative">
@@ -659,19 +868,33 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Empty state when search yields no matches */}
+        {isSearching && flaggedFiltered.length === 0 && activeFiltered.length === 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200/70 p-12 text-center mb-8">
+            <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-slate-500">No subscriptions match "{searchQuery}"</p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-xs text-blue-600 hover:underline mt-2"
+            >
+              Clear search
+            </button>
+          </div>
+        )}
+
         {/* Likely Forgotten section */}
-        {flagged.length > 0 && (
+        {flaggedFiltered.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center justify-between mb-2 px-1 gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                <p className="section-label truncate">Likely Forgotten · {flagged.length}</p>
+                <p className="section-label truncate">Likely Forgotten · {flaggedFiltered.length}</p>
               </div>
               <p className="text-xs font-semibold text-red-600 whitespace-nowrap">{formatYearly(potentialSavings)}</p>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
-              {flagged.map((sub, idx) => (
+              {flaggedFiltered.map((sub, idx) => (
                 <div
                   key={sub.id}
                   className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-red-50/30 transition-colors ${
@@ -718,26 +941,20 @@ export default function Dashboard() {
         )}
 
         {/* All Subscriptions section */}
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-2 px-1 gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <Wallet className="w-4 h-4 text-blue-500 flex-shrink-0" />
-              <p className="section-label truncate">All Subscriptions · {active.length}</p>
-            </div>
-            <p className="text-xs font-semibold text-slate-500 whitespace-nowrap">
-              {formatYearly(totalMonthly - potentialSavings)}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
-            {active.length === 0 ? (
-              <div className="p-12 text-center">
-                <Wallet className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                <p className="text-sm font-medium text-slate-500">No active subscriptions</p>
-                <p className="text-xs text-slate-400 mt-1">Connect your bank to start tracking</p>
+        {activeFiltered.length > 0 && (
+          <section className="mb-8">
+            <div className="flex items-center justify-between mb-2 px-1 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Wallet className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                <p className="section-label truncate">All Subscriptions · {activeFiltered.length}</p>
               </div>
-            ) : (
-              active.map((sub, idx) => (
+              <p className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                {formatYearly(totalMonthly - potentialSavings)}
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
+              {activeFiltered.map((sub, idx) => (
                 <div
                   key={sub.id}
                   className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-blue-50/30 transition-colors group ${
@@ -770,13 +987,22 @@ export default function Dashboard() {
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
-              ))
-            )}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
 
       </main>
 
+      {/* Alerts side panel — read-only view of upcoming renewals */}
+      <AlertsPanel
+        isOpen={showAlerts}
+        onClose={() => setShowAlerts(false)}
+        upcomingRenewals={upcomingRenewals}
+        onCancelClick={(sub) => setSelectedSub(sub)}
+      />
+
+      {/* Cancellation modal (sacred feature #2 — simplified UI, same logic) */}
       {selectedSub && (
         <CancellationModal
           sub={selectedSub}
