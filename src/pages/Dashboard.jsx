@@ -18,6 +18,10 @@ const CURRENCY = {
 // WHY: Free tier limit — matches landing page promise of "Track up to 3 subscriptions".
 const FREE_TIER_LIMIT = 3;
 
+// WHY: Premium price in kobo — Paystack uses the smallest currency unit.
+// ₦3,500 × 100 kobo = 350,000 kobo. Must match backend verification.
+const PREMIUM_PRICE_KOBO = 350000;
+
 // CURRENCY: Helper function to format amounts with comma separators
 const formatAmount = (amountInUSD) => {
   if (CURRENCY.code === 'USD') {
@@ -310,11 +314,14 @@ export default function Dashboard() {
   // WHY: Alerts panel toggle — purely visual state.
   const [showAlerts, setShowAlerts] = useState(false);
 
-  // WHY: Premium status flag — hardcoded to false for now. When Paystack is
-  // integrated, this will be read from Supabase (user_premium.is_premium).
-  const [isPremium] = useState(false);
+  // WHY: Premium status — loaded from Supabase user_premium table on mount.
+  const [isPremium, setIsPremium] = useState(false);
 
-  const BACKEND_URL = 'https://subsaver-backend-3eqa.onrender.com';
+  // WHY: Tracks an in-flight payment so we can show "activating..." state.
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // WHY: NEW backend URL (subsaver-backend-1.onrender.com). Verified live via /api/health.
+  const BACKEND_URL = 'https://subsaver-backend-1.onrender.com';
 
   const getAllSubscriptions = () => {
     return [
@@ -570,6 +577,103 @@ export default function Dashboard() {
     loadData();
   };
 
+  // WHY: Extracted async verification logic. Called by the sync Paystack callback.
+  const verifyPaymentWithBackend = async (reference) => {
+    setIsProcessingPayment(true);
+    toast.info('Payment received. Activating your account...');
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token;
+
+      if (!authToken) {
+        toast.error('Your session expired. Please log in again.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      const verifyRes = await fetch(`${BACKEND_URL}/api/verify-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ reference }),
+      });
+
+      const verifyData = await verifyRes.json();
+
+      if (verifyData.success) {
+        setIsPremium(true);
+        toast.success('Welcome to Premium! 🎉 You now have unlimited subscriptions.');
+      } else {
+        toast.error(verifyData.error || 'Payment verification failed. Please contact support.');
+      }
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      toast.error('Something went wrong. Please try again or contact support.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // WHY: Opens Paystack checkout, verifies payment on backend, activates premium.
+  const handleUpgradeClick = async () => {
+    if (isProcessingPayment) return;
+
+    const isValid = await validateSession(navigate);
+    if (!isValid) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !user.email) {
+      toast.error('Unable to load your account. Please refresh and try again.');
+      return;
+    }
+
+    if (!window.PaystackPop) {
+      toast.error('Payment system failed to load. Please refresh and try again.');
+      return;
+    }
+
+    // WHY: Vite bakes VITE_* env vars at build time. If the key isn't present
+    // at build time, `import.meta.env.VITE_PAYSTACK_PUBLIC_KEY` is undefined
+    // in the deployed bundle, and Paystack rejects the request with a 400.
+    const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+    console.log('[Paystack] Using key prefix:', paystackKey ? paystackKey.slice(0, 16) + '...' : 'MISSING');
+    if (!paystackKey || !paystackKey.startsWith('pk_')) {
+      console.error('[Paystack] Public key missing or invalid. Check VITE_PAYSTACK_PUBLIC_KEY on Render.');
+      toast.error('Payment system is not configured. Please contact support.');
+      return;
+    }
+
+    const handler = window.PaystackPop.setup({
+      // WHY: .trim() defends against invisible trailing whitespace from copy-paste.
+      key: paystackKey.trim(),
+      email: user.email,
+      amount: PREMIUM_PRICE_KOBO,
+      currency: 'NGN',
+      ref: `SUB-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
+      metadata: {
+        custom_fields: [
+          {
+            display_name: 'Product',
+            variable_name: 'product',
+            value: 'Subsaver Premium - Monthly',
+          },
+        ],
+      },
+      // WHY: Paystack rejects AsyncFunction callbacks. Sync wrapper calls async helper.
+      callback: (response) => {
+        verifyPaymentWithBackend(response.reference);
+      },
+      onClose: () => {
+        toast.info('Payment cancelled.');
+      },
+    });
+
+    handler.openIframe();
+  };
+
   const handleLogout = async () => {
     localStorage.removeItem('subsaver_connected');
     localStorage.removeItem('subsaver_mode');
@@ -582,6 +686,22 @@ export default function Dashboard() {
     const init = async () => {
       setLoading(true);
       await loadData();
+
+      const { data: { user: premiumUser } } = await supabase.auth.getUser();
+      if (premiumUser) {
+        const { data: premiumRow, error: premiumError } = await supabase
+          .from('user_premium')
+          .select('is_premium')
+          .eq('user_id', premiumUser.id)
+          .maybeSingle();
+
+        if (premiumError) {
+          console.error('Error loading premium status:', premiumError);
+        } else if (premiumRow?.is_premium) {
+          setIsPremium(true);
+        }
+      }
+
       const savedToken = localStorage.getItem('subsaver_token');
       const savedMode = localStorage.getItem('subsaver_mode');
       const savedConnected = localStorage.getItem('subsaver_connected');
@@ -627,13 +747,11 @@ export default function Dashboard() {
     );
   }
 
-  // WHY: Base lists split by flagged status (sacred feature #1 logic, unchanged).
   const flagged = subscriptions.filter(s => s.flagged === true);
   const active = subscriptions.filter(s => s.flagged !== true);
   const totalMonthly = subscriptions.reduce((sum, s) => sum + s.amount, 0);
   const potentialSavings = flagged.reduce((sum, s) => sum + s.amount, 0);
 
-  // WHY: Search filter — client-side only.
   const searchLower = searchQuery.trim().toLowerCase();
   const flaggedFiltered = searchLower
     ? flagged.filter(s => s.merchant.toLowerCase().includes(searchLower))
@@ -642,7 +760,6 @@ export default function Dashboard() {
     ? active.filter(s => s.merchant.toLowerCase().includes(searchLower))
     : active;
 
-  // WHY: Compute upcoming renewals (next 7 days) from existing subscriptions only.
   const upcomingRenewals = subscriptions
     .filter(s => getDaysUntilRenewal(s.daysSinceLastCharge) <= 7)
     .sort((a, b) => getDaysUntilRenewal(a.daysSinceLastCharge) - getDaysUntilRenewal(b.daysSinceLastCharge));
@@ -650,13 +767,10 @@ export default function Dashboard() {
   const alertsCount = upcomingRenewals.length;
   const isSearching = searchLower.length > 0;
 
-  // WHY: Soft limit flag — true when user is on free tier AND has more subs
-  // than the free limit. Drives the visual banner (real gating comes with Paystack).
   const showSoftLimitBanner = !isPremium && subscriptions.length > FREE_TIER_LIMIT;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/60 via-white to-white">
-      {/* Sticky top nav */}
       <nav className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -667,7 +781,6 @@ export default function Dashboard() {
               <span className="text-base font-bold text-slate-900 tracking-tight">SubSaver</span>
             </div>
 
-            {/* Desktop actions */}
             <div className="hidden md:flex items-center gap-2">
               <button
                 onClick={handleDetectForgotten}
@@ -711,7 +824,6 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* Mobile actions */}
             <div className="md:hidden flex items-center gap-2">
               <button
                 onClick={handleDetectForgotten}
@@ -751,7 +863,6 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in">
 
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-1">
             Your Subscriptions
@@ -761,8 +872,6 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* WHY: Soft-limit banner — visible to free users with more than 3 subs.
-            Visual only for now; real gating unlocks when Paystack is wired up. */}
         {showSoftLimitBanner && (
           <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-blue-600/20 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
@@ -781,16 +890,20 @@ export default function Dashboard() {
                 </div>
               </div>
               <button
-                onClick={() => toast.info('Premium launching soon — we\'ll notify you.')}
-                className="bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:scale-[1.02] transition-all flex-shrink-0 whitespace-nowrap"
+                onClick={handleUpgradeClick}
+                disabled={isProcessingPayment}
+                className={`bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0 whitespace-nowrap ${
+                  isProcessingPayment
+                    ? 'opacity-70 cursor-not-allowed'
+                    : 'hover:shadow-lg hover:scale-[1.02]'
+                }`}
               >
-                Upgrade · ₦3,500/mo
+                {isProcessingPayment ? 'Activating…' : 'Upgrade · ₦3,500/mo'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Pill toolbar — Sort (visual), Search (functional), Alerts (functional with badge) */}
         <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
           <button className="flex-shrink-0 inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25">
             <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -823,7 +936,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Search bar */}
         {showSearch && (
           <div className="mb-6 animate-fade-in">
             <div className="relative">
@@ -854,7 +966,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Hero band */}
         <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-3xl p-6 sm:p-8 mb-6 shadow-xl shadow-blue-600/20 text-white overflow-hidden relative">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
           <div className="relative">
@@ -890,7 +1001,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Empty state when search yields no matches */}
         {isSearching && flaggedFiltered.length === 0 && activeFiltered.length === 0 && (
           <div className="bg-white rounded-2xl border border-slate-200/70 p-12 text-center mb-8">
             <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -904,7 +1014,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Likely Forgotten section */}
         {flaggedFiltered.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center justify-between mb-2 px-1 gap-2">
@@ -962,7 +1071,6 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* All Subscriptions section */}
         {activeFiltered.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center justify-between mb-2 px-1 gap-2">
@@ -1016,7 +1124,6 @@ export default function Dashboard() {
 
       </main>
 
-      {/* Alerts side panel */}
       <AlertsPanel
         isOpen={showAlerts}
         onClose={() => setShowAlerts(false)}
@@ -1024,7 +1131,6 @@ export default function Dashboard() {
         onCancelClick={(sub) => setSelectedSub(sub)}
       />
 
-      {/* Cancellation modal */}
       {selectedSub && (
         <CancellationModal
           sub={selectedSub}
