@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   LogOut, X, Plus, CreditCard, RefreshCw, AlertTriangle,
   ChevronRight, Search, SlidersHorizontal, Bell, Wallet,
-  Calendar, TrendingUp, Circle
+  Calendar, TrendingUp, Circle, Lock
 } from 'lucide-react';
 import { toast } from '../components/Toast';
 
@@ -14,6 +14,9 @@ const CURRENCY = {
   symbol: '₦',
   rate: 1550
 };
+
+// WHY: Free tier limit — matches landing page promise of "Track up to 3 subscriptions".
+const FREE_TIER_LIMIT = 3;
 
 // CURRENCY: Helper function to format amounts with comma separators
 const formatAmount = (amountInUSD) => {
@@ -80,7 +83,6 @@ const getCadenceDays = (daysSinceLastCharge) => {
 };
 
 // WHY: Estimate days until next charge from last charge + cadence.
-// Uses modulo so it works even if the subscription is already overdue.
 const getDaysUntilRenewal = (daysSinceLastCharge) => {
   const cadence = getCadenceDays(daysSinceLastCharge);
   const positionInCycle = daysSinceLastCharge % cadence;
@@ -89,7 +91,6 @@ const getDaysUntilRenewal = (daysSinceLastCharge) => {
 };
 
 // WHY: Focused confirmation modal — no external links, no cancellation guide.
-// Keeps the user inside Subsaver and treats the modal as the final decision point.
 function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
   if (!sub) return null;
 
@@ -103,10 +104,8 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
       className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
     >
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl shadow-slate-900/25 relative overflow-hidden max-h-[90vh] flex flex-col">
-        {/* Top gradient accent */}
         <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 flex-shrink-0"></div>
 
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors z-10"
@@ -116,7 +115,6 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
         </button>
 
         <div className="p-6 sm:p-8 overflow-y-auto">
-          {/* Merchant avatar + heading */}
           <div className="flex items-center gap-3 mb-5 pr-10">
             <div className={`w-12 h-12 rounded-2xl ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-lg flex-shrink-0`}>
               {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
@@ -131,12 +129,10 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
             </div>
           </div>
 
-          {/* Confirmation copy */}
           <p className="text-sm text-slate-600 leading-relaxed mb-5">
             Are you sure you want to cancel this subscription? We'll mark it as cancelled and stop tracking it.
           </p>
 
-          {/* Detail summary card for context */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 space-y-2.5">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">Merchant</span>
@@ -156,7 +152,6 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex flex-col-reverse sm:flex-row gap-3">
             <button
               onClick={onClose}
@@ -183,9 +178,7 @@ function CancellationModal({ sub, onClose, onCancelConfirm, isSaving }) {
 }
 
 // WHY: Alerts side panel — lists upcoming renewals in the next 7 days.
-// Purely read-only from existing subscriptions data. Cancel button opens the same modal.
 function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
-  // WHY: Prevent rendering when closed so no DOM overhead.
   if (!isOpen) return null;
 
   const handleOverlayClick = (e) => {
@@ -198,7 +191,6 @@ function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
       className="fixed inset-0 z-[900] bg-slate-900/50 backdrop-blur-sm flex justify-end animate-fade-in"
     >
       <div className="bg-white w-full max-w-md h-full shadow-2xl overflow-y-auto flex flex-col">
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b border-slate-200/70 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center">
@@ -218,7 +210,6 @@ function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 p-6">
           {upcomingRenewals.length === 0 ? (
             <div className="text-center py-16">
@@ -230,7 +221,6 @@ function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
             </div>
           ) : (
             <>
-              {/* Summary pill */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
                 <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">
                   Next 7 days
@@ -243,7 +233,6 @@ function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
                 </p>
               </div>
 
-              {/* Upcoming list */}
               <div className="space-y-2.5">
                 {upcomingRenewals.map(sub => (
                   <div
@@ -286,11 +275,10 @@ function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
                 ))}
               </div>
 
-              {/* Premium upsell hint */}
               <div className="mt-6 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-5 text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-4 h-4" />
-                  <p className="text-xs font-semibold uppercase tracking-wider">Premium</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider">Premium · ₦3,500/month</p>
                 </div>
                 <p className="text-sm font-semibold mb-1">Never miss a renewal</p>
                 <p className="text-xs text-blue-100 leading-relaxed">
@@ -321,6 +309,10 @@ export default function Dashboard() {
 
   // WHY: Alerts panel toggle — purely visual state.
   const [showAlerts, setShowAlerts] = useState(false);
+
+  // WHY: Premium status flag — hardcoded to false for now. When Paystack is
+  // integrated, this will be read from Supabase (user_premium.is_premium).
+  const [isPremium] = useState(false);
 
   const BACKEND_URL = 'https://subsaver-backend-3eqa.onrender.com';
 
@@ -380,7 +372,6 @@ export default function Dashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // WHY: Await delete + check error so duplicates can't accumulate.
     const { error: deleteError } = await supabase
       .from('user_tokens')
       .delete()
@@ -603,7 +594,6 @@ export default function Dashboard() {
       }
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // WHY: Deterministic query — never panics on duplicate rows (PGRST116 fix).
         const { data: tokenRows, error: tokenError } = await supabase
           .from('user_tokens')
           .select('access_token, created_at')
@@ -643,7 +633,7 @@ export default function Dashboard() {
   const totalMonthly = subscriptions.reduce((sum, s) => sum + s.amount, 0);
   const potentialSavings = flagged.reduce((sum, s) => sum + s.amount, 0);
 
-  // WHY: Apply search filter on top of the derived lists — never mutates underlying data.
+  // WHY: Search filter — client-side only.
   const searchLower = searchQuery.trim().toLowerCase();
   const flaggedFiltered = searchLower
     ? flagged.filter(s => s.merchant.toLowerCase().includes(searchLower))
@@ -659,6 +649,10 @@ export default function Dashboard() {
 
   const alertsCount = upcomingRenewals.length;
   const isSearching = searchLower.length > 0;
+
+  // WHY: Soft limit flag — true when user is on free tier AND has more subs
+  // than the free limit. Drives the visual banner (real gating comes with Paystack).
+  const showSoftLimitBanner = !isPremium && subscriptions.length > FREE_TIER_LIMIT;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/60 via-white to-white">
@@ -735,7 +729,8 @@ export default function Dashboard() {
                   <Plus className="w-5 h-5" />
                 </button>
               ) : (
-                <button                  onClick={handleShowDemoMode}
+                <button
+                  onClick={handleShowDemoMode}
                   className="p-2 rounded-full bg-slate-100 text-slate-700 transition"
                   aria-label="Demo Mode"
                 >
@@ -766,6 +761,35 @@ export default function Dashboard() {
           </p>
         </div>
 
+        {/* WHY: Soft-limit banner — visible to free users with more than 3 subs.
+            Visual only for now; real gating unlocks when Paystack is wired up. */}
+        {showSoftLimitBanner && (
+          <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-blue-600/20 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-start gap-3 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+                  <Lock className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-base mb-1">
+                    You have {subscriptions.length} subscriptions — free tier shows {FREE_TIER_LIMIT}.
+                  </p>
+                  <p className="text-sm text-blue-100 leading-relaxed">
+                    Upgrade to Premium to track unlimited subscriptions and unlock SMS + email renewal reminders.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => toast.info('Premium launching soon — we\'ll notify you.')}
+                className="bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:scale-[1.02] transition-all flex-shrink-0 whitespace-nowrap"
+              >
+                Upgrade · ₦3,500/mo
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Pill toolbar — Sort (visual), Search (functional), Alerts (functional with badge) */}
         <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
           <button className="flex-shrink-0 inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25">
@@ -773,7 +797,6 @@ export default function Dashboard() {
             Sort by Type
           </button>
 
-          {/* WHY: Search pill toggles a search bar below. Active style when open or filtering. */}
           <button
             onClick={() => setShowSearch(prev => !prev)}
             className={`flex-shrink-0 inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition ${
@@ -786,7 +809,6 @@ export default function Dashboard() {
             Search
           </button>
 
-          {/* WHY: Alerts pill opens the side panel. Badge shows count of upcoming renewals. */}
           <button
             onClick={() => setShowAlerts(true)}
             className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition relative"
@@ -801,7 +823,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* WHY: Collapsible search bar — only renders when Search pill is active. */}
+        {/* Search bar */}
         {showSearch && (
           <div className="mb-6 animate-fade-in">
             <div className="relative">
@@ -994,7 +1016,7 @@ export default function Dashboard() {
 
       </main>
 
-      {/* Alerts side panel — read-only view of upcoming renewals */}
+      {/* Alerts side panel */}
       <AlertsPanel
         isOpen={showAlerts}
         onClose={() => setShowAlerts(false)}
@@ -1002,7 +1024,7 @@ export default function Dashboard() {
         onCancelClick={(sub) => setSelectedSub(sub)}
       />
 
-      {/* Cancellation modal (sacred feature #2 — simplified UI, same logic) */}
+      {/* Cancellation modal */}
       {selectedSub && (
         <CancellationModal
           sub={selectedSub}

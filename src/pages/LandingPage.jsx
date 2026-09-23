@@ -27,7 +27,6 @@ export default function LandingPage() {
       <nav className="bg-white/95 backdrop-blur-md sticky top-0 z-50 border-b border-slate-200/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Brand */}
             <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => scrollToSection('home')}>
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-600/25">
                 <CreditCard className="w-5 h-5 text-white" />
@@ -35,7 +34,6 @@ export default function LandingPage() {
               <span className="text-lg font-bold text-slate-900 tracking-tight">SubSaver</span>
             </div>
 
-            {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-8">
               <button onClick={() => scrollToSection('features')} className="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Features</button>
               <button onClick={() => scrollToSection('how-it-works')} className="text-sm font-medium text-slate-600 hover:text-blue-600 transition">How It Works</button>
@@ -43,20 +41,17 @@ export default function LandingPage() {
               <button onClick={() => scrollToSection('testimonials')} className="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Testimonials</button>
             </div>
 
-            {/* Desktop CTAs */}
             <div className="hidden md:flex items-center gap-3">
               <button onClick={handleGetStarted} className="text-sm font-medium text-slate-600 hover:text-slate-900 transition px-3 py-2">Log in</button>
               <button onClick={handleGetStarted} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/25 transition-all">Get Started</button>
             </div>
 
-            {/* Mobile menu button */}
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 rounded-lg hover:bg-slate-100 transition">
               {mobileMenuOpen ? <X className="w-5 h-5 text-slate-600" /> : <Menu className="w-5 h-5 text-slate-600" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-b border-slate-200/70 py-4">
             <div className="flex flex-col space-y-1 px-4">
@@ -80,20 +75,17 @@ export default function LandingPage() {
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
           <div className="text-center">
-            {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-1.5 rounded-full mb-6">
               <Sparkles className="w-3.5 h-3.5" />
               <span className="text-xs font-semibold tracking-wide">Trusted by early users</span>
             </div>
 
-            {/* Headline */}
             <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 mb-6 leading-[1.05] tracking-tight">
               Spot every subscription.
               <br />
               <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Cancel what you don't need.</span>
             </h1>
 
-            {/* Subhead */}
             <p className="text-xl md:text-2xl text-slate-600 max-w-3xl mx-auto mb-4 font-medium">
               Know where your money goes. Save what you didn't know you were losing.
             </p>
@@ -101,7 +93,6 @@ export default function LandingPage() {
               Managing money is hard, but you don't have to do it alone. Subsaver empowers you to save more, spend less, see everything, and take back control of your financial life.
             </p>
 
-            {/* Primary CTA */}
             <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
               <button onClick={handleGetStarted} className="bg-blue-600 text-white px-8 py-4 rounded-xl text-base font-semibold hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-600/25 transition-all inline-flex items-center gap-2">
                 Take control of my finances <ArrowRight className="w-4 h-4" />
@@ -145,7 +136,6 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Feature 1 */}
             <div className="bg-white rounded-2xl p-8 border border-slate-200/70 hover:border-blue-300 shadow-sm hover:shadow-xl hover:shadow-blue-600/5 transition-all duration-300 group">
               <div className="w-12 h-12 rounded-xl bg-blue-50 group-hover:bg-blue-600 flex items-center justify-center mb-5 transition-colors duration-300">
                 <Wallet className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors duration-300" />
@@ -156,7 +146,6 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* Feature 2 */}
             <div className="bg-white rounded-2xl p-8 border border-slate-200/70 hover:border-blue-300 shadow-sm hover:shadow-xl hover:shadow-blue-600/5 transition-all duration-300 group">
               <div className="w-12 h-12 rounded-xl bg-blue-50 group-hover:bg-blue-600 flex items-center justify-center mb-5 transition-colors duration-300">
                 <Eye className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors duration-300" />
@@ -167,7 +156,6 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* Feature 3 */}
             <div className="bg-white rounded-2xl p-8 border border-slate-200/70 hover:border-blue-300 shadow-sm hover:shadow-xl hover:shadow-blue-600/5 transition-all duration-300 group">
               <div className="w-12 h-12 rounded-xl bg-blue-50 group-hover:bg-blue-600 flex items-center justify-center mb-5 transition-colors duration-300">
                 <Zap className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors duration-300" />
@@ -179,7 +167,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Extra features grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12">
             <div className="text-center p-4">
               <TrendingUp className="w-6 h-6 text-blue-600 mx-auto mb-2" />
@@ -251,7 +238,7 @@ export default function LandingPage() {
                 ₦0<span className="text-base font-normal text-slate-500">/month</span>
               </div>
               <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Track up to 5 subscriptions</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Track up to 3 subscriptions</li>
                 <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Bank connection (Mono)</li>
                 <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Detect forgotten subscriptions</li>
                 <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Cancel guides</li>
@@ -266,7 +253,7 @@ export default function LandingPage() {
               <div className="absolute top-0 right-0 bg-yellow-400 text-blue-900 px-4 py-1 rounded-bl-2xl text-xs font-bold tracking-wide">MOST POPULAR</div>
               <h3 className="text-xl font-bold mb-2">Premium</h3>
               <div className="text-4xl font-extrabold mb-6">
-                ₦2,000<span className="text-base font-normal text-blue-100">/month</span>
+                ₦3,500<span className="text-base font-normal text-blue-100">/month</span>
               </div>
               <ul className="space-y-3 mb-8">
                 <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Unlimited subscriptions</li>
@@ -278,7 +265,7 @@ export default function LandingPage() {
               <button onClick={handleGetStarted} className="w-full bg-white text-blue-600 py-3 rounded-xl font-semibold hover:shadow-lg hover:scale-[1.02] transition-all">
                 Start Premium
               </button>
-              <p className="text-center text-blue-100 text-xs mt-4">Annual plan: ₦20,000/year — save ₦4,000</p>
+              <p className="text-center text-blue-100 text-xs mt-4">Annual plan: ₦35,000/year — save ₦7,000</p>
             </div>
           </div>
         </div>
