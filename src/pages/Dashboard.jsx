@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   LogOut, X, Plus, CreditCard, RefreshCw, AlertTriangle,
   ChevronRight, Search, SlidersHorizontal, Bell, Wallet,
-  Calendar, TrendingUp, Circle, Lock
+  Calendar, TrendingUp, Circle, Lock, Link2
 } from 'lucide-react';
 import { toast } from '../components/Toast';
 
@@ -303,7 +303,8 @@ export default function Dashboard() {
   const [selectedSub, setSelectedSub] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [cancellingIds, setCancellingIds] = useState([]);
-  const [mode, setMode] = useState('demo');
+  // WHY: Tracks whether the user has a Mono bank token saved (localStorage or DB).
+  // Drives the empty state vs the subscription list.
   const [hasConnectedBank, setHasConnectedBank] = useState(false);
   const navigate = useNavigate();
 
@@ -320,26 +321,8 @@ export default function Dashboard() {
   // WHY: Tracks an in-flight payment so we can show "activating..." state.
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // WHY: NEW backend URL (subsaver-backend-1.onrender.com). Verified live via /api/health.
+  // WHY: Backend URL (subsaver-backend-1.onrender.com). Verified live via /api/health.
   const BACKEND_URL = 'https://subsaver-backend-1.onrender.com';
-
-  const getAllSubscriptions = () => {
-    return [
-      { id: '1', merchant: 'Netflix', amount: 15.99, lastCharge: '2026-03-25', daysSinceLastCharge: 20, flagged: false },
-      { id: '2', merchant: 'Spotify', amount: 9.99, lastCharge: '2026-03-20', daysSinceLastCharge: 25, flagged: false },
-      { id: '5', merchant: 'Amazon Prime', amount: 14.99, lastCharge: '2026-03-10', daysSinceLastCharge: 35, flagged: false },
-      { id: '7', merchant: 'Disney+', amount: 12.99, lastCharge: '2026-03-28', daysSinceLastCharge: 17, flagged: false },
-      { id: '9', merchant: 'Apple Music', amount: 10.99, lastCharge: '2026-04-01', daysSinceLastCharge: 13, flagged: false },
-      { id: '3', merchant: 'Adobe Creative Cloud', amount: 52.99, lastCharge: '2026-01-15', daysSinceLastCharge: 89, flagged: true },
-      { id: '4', merchant: 'AWS Services', amount: 847.50, lastCharge: '2026-01-20', daysSinceLastCharge: 84, flagged: true },
-      { id: '6', merchant: 'Gym Membership', amount: 200.00, lastCharge: '2025-12-15', daysSinceLastCharge: 121, flagged: true },
-      { id: '8', merchant: 'HBO Max', amount: 16.99, lastCharge: '2026-02-01', daysSinceLastCharge: 72, flagged: true },
-      { id: '10', merchant: 'Magazine Subscription', amount: 12.99, lastCharge: '2025-10-15', daysSinceLastCharge: 182, flagged: true },
-      { id: '11', merchant: 'Software License', amount: 299.99, lastCharge: '2025-09-01', daysSinceLastCharge: 226, flagged: true },
-      { id: '12', merchant: 'Cloud Storage', amount: 49.99, lastCharge: '2025-11-20', daysSinceLastCharge: 146, flagged: true },
-      { id: '13', merchant: 'VPN Service', amount: 79.99, lastCharge: '2025-08-10', daysSinceLastCharge: 248, flagged: true },
-    ];
-  };
 
   const loadKeptSubscriptions = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -400,16 +383,16 @@ export default function Dashboard() {
       return;
     }
 
+    // WHY: Persist bank connection state to localStorage so refresh doesn't lose it.
+    // NOTE: We no longer use `subsaver_mode` — that was for the demo mode feature.
     localStorage.setItem('subsaver_connected', 'true');
-    localStorage.setItem('subsaver_mode', 'live');
     localStorage.setItem('subsaver_token', token);
     setHasConnectedBank(true);
-    setMode('live');
   };
 
   const loadData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSubscriptions(getAllSubscriptions()); return; }
+    if (!user) { setSubscriptions([]); return; }
 
     const { data: cancelled, error: cancelError } = await supabase
       .from('user_cancellations')
@@ -424,14 +407,14 @@ export default function Dashboard() {
     const keptIds = await loadKeptSubscriptions();
     const detected = await loadDetectedSubscriptions();
 
-    let allSubs = [...getAllSubscriptions()];
+    // WHY: Only show subscriptions the user has actually detected (via Mono)
+    // or generated via "Detect Forgotten". No more mock demo data.
     const detectedSubs = detected.map(d => ({
       id: d.subscription_id, merchant: d.merchant_name, amount: d.amount,
       lastCharge: d.last_charge, daysSinceLastCharge: d.days_since, flagged: true
     }));
-    allSubs = [...allSubs, ...detectedSubs];
 
-    const processed = allSubs.map(sub => ({
+    const processed = detectedSubs.map(sub => ({
       ...sub,
       flagged: sub.flagged && !keptIds.includes(sub.id) && !cancelledIds.includes(sub.id)
     }));
@@ -544,11 +527,6 @@ export default function Dashboard() {
               const exchangeData = await exchange.json();
               if (exchangeData.access_token) {
                 await saveAccessToken(exchangeData.access_token);
-                localStorage.setItem('subsaver_connected', 'true');
-                localStorage.setItem('subsaver_mode', 'live');
-                localStorage.setItem('subsaver_token', exchangeData.access_token);
-                setHasConnectedBank(true);
-                setMode('live');
                 toast.success('Bank connected! Connection saved.');
               }
             } catch (error) {
@@ -566,15 +544,6 @@ export default function Dashboard() {
       console.error('Error loading Mono Connect:', err);
       toast.error('Failed to load bank connection. Please refresh and try again.');
     });
-  };
-
-  const handleShowDemoMode = () => {
-    localStorage.removeItem('subsaver_connected');
-    localStorage.removeItem('subsaver_mode');
-    localStorage.removeItem('subsaver_token');
-    setMode('demo');
-    setHasConnectedBank(false);
-    loadData();
   };
 
   // WHY: Extracted async verification logic. Called by the sync Paystack callback.
@@ -647,7 +616,6 @@ export default function Dashboard() {
     }
 
     const handler = window.PaystackPop.setup({
-      // WHY: .trim() defends against invisible trailing whitespace from copy-paste.
       key: paystackKey.trim(),
       email: user.email,
       amount: PREMIUM_PRICE_KOBO,
@@ -676,8 +644,9 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     localStorage.removeItem('subsaver_connected');
-    localStorage.removeItem('subsaver_mode');
     localStorage.removeItem('subsaver_token');
+    // WHY: Clean up legacy key from old demo mode.
+    localStorage.removeItem('subsaver_mode');
     await supabase.auth.signOut();
     navigate('/');
   };
@@ -702,12 +671,11 @@ export default function Dashboard() {
         }
       }
 
+      // WHY: Restore bank connection state from localStorage first, then DB fallback.
       const savedToken = localStorage.getItem('subsaver_token');
-      const savedMode = localStorage.getItem('subsaver_mode');
       const savedConnected = localStorage.getItem('subsaver_connected');
       if (savedToken && savedConnected === 'true') {
         setHasConnectedBank(true);
-        setMode(savedMode === 'live' ? 'live' : 'demo');
         console.log('Bank connection restored from localStorage');
         setLoading(false);
         return;
@@ -727,10 +695,8 @@ export default function Dashboard() {
 
         if (tokenData?.access_token) {
           localStorage.setItem('subsaver_connected', 'true');
-          localStorage.setItem('subsaver_mode', 'live');
           localStorage.setItem('subsaver_token', tokenData.access_token);
           setHasConnectedBank(true);
-          setMode('live');
           console.log('Bank connection restored from database');
         }
       }
@@ -768,6 +734,8 @@ export default function Dashboard() {
   const isSearching = searchLower.length > 0;
 
   const showSoftLimitBanner = !isPremium && subscriptions.length > FREE_TIER_LIMIT;
+  // WHY: Show the empty state when the user has no connected bank AND no subscriptions.
+  const showEmptyState = !hasConnectedBank && subscriptions.length === 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/60 via-white to-white">
@@ -790,27 +758,19 @@ export default function Dashboard() {
                 Detect Forgotten
               </button>
 
-              {mode === 'demo' ? (
+              {hasConnectedBank ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Bank Connected
+                </span>
+              ) : (
                 <button
                   onClick={handleConnectBank}
-                  className="inline-flex items-center gap-2 bg-slate-900 hover:bg-black text-white text-sm font-semibold px-4 py-2 rounded-full transition-all"
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-full transition-all shadow-lg shadow-blue-600/20"
                 >
                   <Plus className="w-4 h-4" />
                   Connect Bank
                 </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleShowDemoMode}
-                    className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full transition-all"
-                  >
-                    Demo Mode
-                  </button>
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Connected
-                  </span>
-                </div>
               )}
 
               <div className="w-px h-6 bg-slate-200 mx-1"></div>
@@ -832,21 +792,13 @@ export default function Dashboard() {
               >
                 <RefreshCw className="w-5 h-5" />
               </button>
-              {mode === 'demo' ? (
+              {!hasConnectedBank && (
                 <button
                   onClick={handleConnectBank}
-                  className="p-2 rounded-full bg-slate-900 text-white transition"
+                  className="p-2 rounded-full bg-blue-600 text-white transition shadow-lg shadow-blue-600/20"
                   aria-label="Connect Bank"
                 >
                   <Plus className="w-5 h-5" />
-                </button>
-              ) : (
-                <button
-                  onClick={handleShowDemoMode}
-                  className="p-2 rounded-full bg-slate-100 text-slate-700 transition"
-                  aria-label="Demo Mode"
-                >
-                  <RefreshCw className="w-5 h-5" />
                 </button>
               )}
               <button
@@ -863,263 +815,306 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in">
 
-        <div className="mb-6">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-1">
-            Your Subscriptions
-          </h1>
-          <p className="text-sm text-slate-500">
-            {subscriptions.length} active · {formatAmount(totalMonthly)} monthly
-          </p>
-        </div>
+        {/* WHY: Empty state — no bank connected, no subscriptions. Big friendly CTA. */}
+        {showEmptyState ? (
+          <div className="max-w-xl mx-auto text-center py-16 sm:py-24">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-600/25">
+              <Link2 className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-3">
+              Connect your bank to get started
+            </h1>
+            <p className="text-base text-slate-600 mb-8 max-w-md mx-auto leading-relaxed">
+              Subsaver will scan your transactions, find all your subscriptions, and show you exactly where your money is going.
+            </p>
+            <button
+              onClick={handleConnectBank}
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-xl text-base font-semibold hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-600/25 transition-all"
+            >
+              <Plus className="w-5 h-5" />
+              Connect Your Bank
+            </button>
+            <p className="text-xs text-slate-400 mt-4">
+              Read-only access via Mono. We can't move your money.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-6">
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-1">
+                Your Subscriptions
+              </h1>
+              <p className="text-sm text-slate-500">
+                {subscriptions.length} active · {formatAmount(totalMonthly)} monthly
+              </p>
+            </div>
 
-        {showSoftLimitBanner && (
-          <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-blue-600/20 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-            <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="flex items-start gap-3 flex-1">
-                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-                  <Lock className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="font-bold text-base mb-1">
-                    You have {subscriptions.length} subscriptions — free tier shows {FREE_TIER_LIMIT}.
-                  </p>
-                  <p className="text-sm text-blue-100 leading-relaxed">
-                    Upgrade to Premium to track unlimited subscriptions and unlock SMS + email renewal reminders.
-                  </p>
+            {showSoftLimitBanner && (
+              <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-blue-600/20 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+                      <Lock className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-base mb-1">
+                        You have {subscriptions.length} subscriptions — free tier shows {FREE_TIER_LIMIT}.
+                      </p>
+                      <p className="text-sm text-blue-100 leading-relaxed">
+                        Upgrade to Premium to track unlimited subscriptions and unlock SMS + email renewal reminders.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleUpgradeClick}
+                    disabled={isProcessingPayment}
+                    className={`bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0 whitespace-nowrap ${
+                      isProcessingPayment
+                        ? 'opacity-70 cursor-not-allowed'
+                        : 'hover:shadow-lg hover:scale-[1.02]'
+                    }`}
+                  >
+                    {isProcessingPayment ? 'Activating…' : 'Upgrade · ₦3,500/mo'}
+                  </button>
                 </div>
               </div>
+            )}
+
+            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+              <button className="flex-shrink-0 inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25">
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                Sort by Type
+              </button>
+
               <button
-                onClick={handleUpgradeClick}
-                disabled={isProcessingPayment}
-                className={`bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0 whitespace-nowrap ${
-                  isProcessingPayment
-                    ? 'opacity-70 cursor-not-allowed'
-                    : 'hover:shadow-lg hover:scale-[1.02]'
+                onClick={() => setShowSearch(prev => !prev)}
+                className={`flex-shrink-0 inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition ${
+                  showSearch || isSearching
+                    ? 'bg-blue-50 border border-blue-200 text-blue-700'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-slate-300'
                 }`}
               >
-                {isProcessingPayment ? 'Activating…' : 'Upgrade · ₦3,500/mo'}
+                <Search className="w-3.5 h-3.5" />
+                Search
+              </button>
+
+              <button
+                onClick={() => setShowAlerts(true)}
+                className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition relative"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                Alerts
+                {alertsCount > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                    {alertsCount}
+                  </span>
+                )}
               </button>
             </div>
-          </div>
-        )}
 
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
-          <button className="flex-shrink-0 inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25">
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            Sort by Type
-          </button>
-
-          <button
-            onClick={() => setShowSearch(prev => !prev)}
-            className={`flex-shrink-0 inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition ${
-              showSearch || isSearching
-                ? 'bg-blue-50 border border-blue-200 text-blue-700'
-                : 'bg-white border border-slate-200 text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            <Search className="w-3.5 h-3.5" />
-            Search
-          </button>
-
-          <button
-            onClick={() => setShowAlerts(true)}
-            className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition relative"
-          >
-            <Bell className="w-3.5 h-3.5" />
-            Alerts
-            {alertsCount > 0 && (
-              <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold">
-                {alertsCount}
-              </span>
+            {showSearch && (
+              <div className="mb-6 animate-fade-in">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search subscriptions by merchant name..."
+                    className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    autoFocus
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                      aria-label="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {isSearching && (
+                  <p className="text-xs text-slate-500 mt-2 pl-1">
+                    Showing <span className="font-semibold text-slate-700">{flaggedFiltered.length + activeFiltered.length}</span> result{flaggedFiltered.length + activeFiltered.length !== 1 ? 's' : ''} for "{searchQuery}"
+                  </p>
+                )}
+              </div>
             )}
-          </button>
-        </div>
 
-        {showSearch && (
-          <div className="mb-6 animate-fade-in">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search subscriptions by merchant name..."
-                className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                autoFocus
-              />
-              {searchQuery && (
+            <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-3xl p-6 sm:p-8 mb-6 shadow-xl shadow-blue-600/20 text-white overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+              <div className="relative">
+                <p className="text-xs uppercase tracking-widest text-blue-100 font-semibold mb-2">
+                  You're spending
+                </p>
+                <div className="flex items-end gap-3 flex-wrap">
+                  <p className="text-4xl sm:text-5xl font-extrabold tracking-tight">
+                    {formatAmount(totalMonthly)}
+                  </p>
+                  <p className="text-blue-100 font-medium mb-1.5">/ month</p>
+                </div>
+                <p className="text-sm text-blue-100 mt-2">
+                  That's <span className="font-bold text-white">{formatYearly(totalMonthly)}</span> if nothing changes.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-4 pt-4 border-t border-white/15">
+                  <div>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Potential Savings</p>
+                    <p className="text-base sm:text-lg font-bold text-white">{formatAmount(potentialSavings)}/mo</p>
+                  </div>
+                  <div className="hidden sm:block w-px h-8 bg-white/20"></div>
+                  <div>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Forgotten</p>
+                    <p className="text-base sm:text-lg font-bold text-white">{flagged.length}</p>
+                  </div>
+                  <div className="hidden sm:block w-px h-8 bg-white/20"></div>
+                  <div>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Active</p>
+                    <p className="text-base sm:text-lg font-bold text-white">{active.length}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {isSearching && flaggedFiltered.length === 0 && activeFiltered.length === 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200/70 p-12 text-center mb-8">
+                <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm font-medium text-slate-500">No subscriptions match "{searchQuery}"</p>
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                  aria-label="Clear search"
+                  className="text-xs text-blue-600 hover:underline mt-2"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  Clear search
                 </button>
-              )}
-            </div>
-            {isSearching && (
-              <p className="text-xs text-slate-500 mt-2 pl-1">
-                Showing <span className="font-semibold text-slate-700">{flaggedFiltered.length + activeFiltered.length}</span> result{flaggedFiltered.length + activeFiltered.length !== 1 ? 's' : ''} for "{searchQuery}"
-              </p>
+              </div>
             )}
-          </div>
-        )}
 
-        <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-3xl p-6 sm:p-8 mb-6 shadow-xl shadow-blue-600/20 text-white overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-          <div className="relative">
-            <p className="text-xs uppercase tracking-widest text-blue-100 font-semibold mb-2">
-              You're spending
-            </p>
-            <div className="flex items-end gap-3 flex-wrap">
-              <p className="text-4xl sm:text-5xl font-extrabold tracking-tight">
-                {formatAmount(totalMonthly)}
-              </p>
-              <p className="text-blue-100 font-medium mb-1.5">/ month</p>
-            </div>
-            <p className="text-sm text-blue-100 mt-2">
-              That's <span className="font-bold text-white">{formatYearly(totalMonthly)}</span> if nothing changes.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-4 pt-4 border-t border-white/15">
-              <div>
-                <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Potential Savings</p>
-                <p className="text-base sm:text-lg font-bold text-white">{formatAmount(potentialSavings)}/mo</p>
-              </div>
-              <div className="hidden sm:block w-px h-8 bg-white/20"></div>
-              <div>
-                <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Forgotten</p>
-                <p className="text-base sm:text-lg font-bold text-white">{flagged.length}</p>
-              </div>
-              <div className="hidden sm:block w-px h-8 bg-white/20"></div>
-              <div>
-                <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Active</p>
-                <p className="text-base sm:text-lg font-bold text-white">{active.length}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {isSearching && flaggedFiltered.length === 0 && activeFiltered.length === 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200/70 p-12 text-center mb-8">
-            <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-medium text-slate-500">No subscriptions match "{searchQuery}"</p>
-            <button
-              onClick={() => setSearchQuery('')}
-              className="text-xs text-blue-600 hover:underline mt-2"
-            >
-              Clear search
-            </button>
-          </div>
-        )}
-
-        {flaggedFiltered.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center justify-between mb-2 px-1 gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                <p className="section-label truncate">Likely Forgotten · {flaggedFiltered.length}</p>
-              </div>
-              <p className="text-xs font-semibold text-red-600 whitespace-nowrap">{formatYearly(potentialSavings)}</p>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
-              {flaggedFiltered.map((sub, idx) => (
-                <div
-                  key={sub.id}
-                  className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-red-50/30 transition-colors ${
-                    idx !== 0 ? 'border-t border-slate-100' : ''
-                  }`}
+            {/* WHY: No subscriptions yet — bank connected but nothing detected. */}
+            {!isSearching && subscriptions.length === 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200/70 p-12 text-center mb-8">
+                <Wallet className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm font-medium text-slate-500 mb-2">No subscriptions found yet</p>
+                <p className="text-xs text-slate-400 mb-4">Tap "Detect Forgotten" to scan for dormant subscriptions.</p>
+                <button
+                  onClick={handleDetectForgotten}
+                  className="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all"
                 >
-                  <div className={`w-10 h-10 rounded-full ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
-                    {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 text-sm truncate">
-                      {sanitizeText(sub.merchant)}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5 truncate">
-                      {getCadence(sub.daysSinceLastCharge)}
-                      {sub.daysSinceLastCharge && (
-                        <span className="text-red-600 font-medium ml-1.5">
-                          · {sub.daysSinceLastCharge}d inactive
-                        </span>
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="text-right flex-shrink-0 hidden sm:block">
-                    <p className="font-bold text-slate-900 text-sm">{formatAmount(sub.amount)}</p>
-                    <p className="text-[10px] text-slate-400">{sub.lastCharge}</p>
-                  </div>
-
-                  <div className="text-right flex-shrink-0 sm:hidden">
-                    <p className="font-bold text-slate-900 text-xs">{formatAmount(sub.amount)}</p>
-                  </div>
-
-                  <button
-                    onClick={() => setSelectedSub(sub)}
-                    className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all flex-shrink-0"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {activeFiltered.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center justify-between mb-2 px-1 gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Wallet className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                <p className="section-label truncate">All Subscriptions · {activeFiltered.length}</p>
+                  <RefreshCw className="w-4 h-4" />
+                  Detect Forgotten
+                </button>
               </div>
-              <p className="text-xs font-semibold text-slate-500 whitespace-nowrap">
-                {formatYearly(totalMonthly - potentialSavings)}
-              </p>
-            </div>
+            )}
 
-            <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
-              {activeFiltered.map((sub, idx) => (
-                <div
-                  key={sub.id}
-                  className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-blue-50/30 transition-colors group ${
-                    idx !== 0 ? 'border-t border-slate-100' : ''
-                  }`}
-                >
-                  <div className={`w-10 h-10 rounded-full ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
-                    {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
+            {flaggedFiltered.length > 0 && (
+              <section className="mb-8">
+                <div className="flex items-center justify-between mb-2 px-1 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <p className="section-label truncate">Likely Forgotten · {flaggedFiltered.length}</p>
                   </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 text-sm truncate">
-                      {sanitizeText(sub.merchant)}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5 truncate">
-                      {getCadence(sub.daysSinceLastCharge)}
-                      <span className="hidden sm:inline"> · Last {sub.lastCharge}</span>
-                    </p>
-                  </div>
-
-                  <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-slate-900 text-sm">{formatAmount(sub.amount)}</p>
-                  </div>
-
-                  <button
-                    onClick={() => setSelectedSub(sub)}
-                    className="flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 p-1"
-                    aria-label="Cancel"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <p className="text-xs font-semibold text-red-600 whitespace-nowrap">{formatYearly(potentialSavings)}</p>
                 </div>
-              ))}
-            </div>
-          </section>
+
+                <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
+                  {flaggedFiltered.map((sub, idx) => (
+                    <div
+                      key={sub.id}
+                      className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-red-50/30 transition-colors ${
+                        idx !== 0 ? 'border-t border-slate-100' : ''
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+                        {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">
+                          {sanitizeText(sub.merchant)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {getCadence(sub.daysSinceLastCharge)}
+                          {sub.daysSinceLastCharge && (
+                            <span className="text-red-600 font-medium ml-1.5">
+                              · {sub.daysSinceLastCharge}d inactive
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="text-right flex-shrink-0 hidden sm:block">
+                        <p className="font-bold text-slate-900 text-sm">{formatAmount(sub.amount)}</p>
+                        <p className="text-[10px] text-slate-400">{sub.lastCharge}</p>
+                      </div>
+
+                      <div className="text-right flex-shrink-0 sm:hidden">
+                        <p className="font-bold text-slate-900 text-xs">{formatAmount(sub.amount)}</p>
+                      </div>
+
+                      <button
+                        onClick={() => setSelectedSub(sub)}
+                        className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all flex-shrink-0"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {activeFiltered.length > 0 && (
+              <section className="mb-8">
+                <div className="flex items-center justify-between mb-2 px-1 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Wallet className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    <p className="section-label truncate">All Subscriptions · {activeFiltered.length}</p>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                    {formatYearly(totalMonthly - potentialSavings)}
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden shadow-sm">
+                  {activeFiltered.map((sub, idx) => (
+                    <div
+                      key={sub.id}
+                      className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-blue-50/30 transition-colors group ${
+                        idx !== 0 ? 'border-t border-slate-100' : ''
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full ${getMerchantColor(sub.merchant)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
+                        {sanitizeText(sub.merchant).charAt(0).toUpperCase()}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">
+                          {sanitizeText(sub.merchant)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {getCadence(sub.daysSinceLastCharge)}
+                          <span className="hidden sm:inline"> · Last {sub.lastCharge}</span>
+                        </p>
+                      </div>
+
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold text-slate-900 text-sm">{formatAmount(sub.amount)}</p>
+                      </div>
+
+                      <button
+                        onClick={() => setSelectedSub(sub)}
+                        className="flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 p-1"
+                        aria-label="Cancel"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
 
       </main>
