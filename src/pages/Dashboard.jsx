@@ -15,12 +15,13 @@ const CURRENCY = {
   rate: 1550
 };
 
-// WHY: Free tier limit — matches landing page promise of "Track up to 3 subscriptions".
-const FREE_TIER_LIMIT = 3;
+// WHY: Free tier limit — 2 subs. Nigerian users typically have 3-6 subs, so
+// 3+ subs instantly shows the value of upgrading.
+const FREE_TIER_LIMIT = 2;
 
-// WHY: Premium price in kobo — Paystack uses the smallest currency unit.
-// ₦3,500 × 100 kobo = 350,000 kobo. Must match backend verification.
-const PREMIUM_PRICE_KOBO = 350000;
+// WHY: Two tiers — monthly (₦3,500) and annual (₦25,000). Both in kobo.
+const TIER_MONTHLY_KOBO = 350000;
+const TIER_ANNUAL_KOBO = 2500000;
 
 // CURRENCY: Helper function to format amounts with comma separators
 const formatAmount = (amountInUSD) => {
@@ -282,7 +283,7 @@ function AlertsPanel({ isOpen, onClose, upcomingRenewals, onCancelClick }) {
               <div className="mt-6 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-5 text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-4 h-4" />
-                  <p className="text-xs font-semibold uppercase tracking-wider">Premium · ₦3,500/month</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider">Premium · from ₦3,500/month</p>
                 </div>
                 <p className="text-sm font-semibold mb-1">Never miss a renewal</p>
                 <p className="text-xs text-blue-100 leading-relaxed">
@@ -303,9 +304,8 @@ export default function Dashboard() {
   const [selectedSub, setSelectedSub] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [cancellingIds, setCancellingIds] = useState([]);
-  // WHY: Tracks whether the user has a Mono bank token saved (localStorage or DB).
-  // Drives the empty state vs the subscription list.
   const [hasConnectedBank, setHasConnectedBank] = useState(false);
+  const [firstName, setFirstName] = useState('');
   const navigate = useNavigate();
 
   // WHY: Search filter state — client-side only, does not touch the DB.
@@ -383,8 +383,6 @@ export default function Dashboard() {
       return;
     }
 
-    // WHY: Persist bank connection state to localStorage so refresh doesn't lose it.
-    // NOTE: We no longer use `subsaver_mode` — that was for the demo mode feature.
     localStorage.setItem('subsaver_connected', 'true');
     localStorage.setItem('subsaver_token', token);
     setHasConnectedBank(true);
@@ -407,8 +405,6 @@ export default function Dashboard() {
     const keptIds = await loadKeptSubscriptions();
     const detected = await loadDetectedSubscriptions();
 
-    // WHY: Only show subscriptions the user has actually detected (via Mono)
-    // or generated via "Detect Forgotten". No more mock demo data.
     const detectedSubs = detected.map(d => ({
       id: d.subscription_id, merchant: d.merchant_name, amount: d.amount,
       lastCharge: d.last_charge, daysSinceLastCharge: d.days_since, flagged: true
@@ -547,7 +543,8 @@ export default function Dashboard() {
   };
 
   // WHY: Extracted async verification logic. Called by the sync Paystack callback.
-  const verifyPaymentWithBackend = async (reference) => {
+  // Now accepts tier so the backend knows monthly vs annual.
+  const verifyPaymentWithBackend = async (reference, tier) => {
     setIsProcessingPayment(true);
     toast.info('Payment received. Activating your account...');
 
@@ -567,7 +564,7 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ reference }),
+        body: JSON.stringify({ reference, tier }),
       });
 
       const verifyData = await verifyRes.json();
@@ -587,7 +584,8 @@ export default function Dashboard() {
   };
 
   // WHY: Opens Paystack checkout, verifies payment on backend, activates premium.
-  const handleUpgradeClick = async () => {
+  // Accepts tier: 'monthly' (default) or 'annual'.
+  const handleUpgradeClick = async (tier) => {
     if (isProcessingPayment) return;
 
     const isValid = await validateSession(navigate);
@@ -604,9 +602,6 @@ export default function Dashboard() {
       return;
     }
 
-    // WHY: Vite bakes VITE_* env vars at build time. If the key isn't present
-    // at build time, `import.meta.env.VITE_PAYSTACK_PUBLIC_KEY` is undefined
-    // in the deployed bundle, and Paystack rejects the request with a 400.
     const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
     console.log('[Paystack] Using key prefix:', paystackKey ? paystackKey.slice(0, 16) + '...' : 'MISSING');
     if (!paystackKey || !paystackKey.startsWith('pk_')) {
@@ -615,10 +610,14 @@ export default function Dashboard() {
       return;
     }
 
+    // WHY: Amount depends on chosen tier. Default to monthly if no tier passed.
+    const chosenTier = tier === 'annual' ? 'annual' : 'monthly';
+    const amountKobo = chosenTier === 'annual' ? TIER_ANNUAL_KOBO : TIER_MONTHLY_KOBO;
+
     const handler = window.PaystackPop.setup({
       key: paystackKey.trim(),
       email: user.email,
-      amount: PREMIUM_PRICE_KOBO,
+      amount: amountKobo,
       currency: 'NGN',
       ref: `SUB-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       metadata: {
@@ -626,13 +625,12 @@ export default function Dashboard() {
           {
             display_name: 'Product',
             variable_name: 'product',
-            value: 'Subsaver Premium - Monthly',
+            value: `Subsaver Premium - ${chosenTier === 'annual' ? 'Annual' : 'Monthly'}`,
           },
         ],
       },
-      // WHY: Paystack rejects AsyncFunction callbacks. Sync wrapper calls async helper.
       callback: (response) => {
-        verifyPaymentWithBackend(response.reference);
+        verifyPaymentWithBackend(response.reference, chosenTier);
       },
       onClose: () => {
         toast.info('Payment cancelled.');
@@ -645,7 +643,6 @@ export default function Dashboard() {
   const handleLogout = async () => {
     localStorage.removeItem('subsaver_connected');
     localStorage.removeItem('subsaver_token');
-    // WHY: Clean up legacy key from old demo mode.
     localStorage.removeItem('subsaver_mode');
     await supabase.auth.signOut();
     navigate('/');
@@ -656,22 +653,34 @@ export default function Dashboard() {
       setLoading(true);
       await loadData();
 
-      const { data: { user: premiumUser } } = await supabase.auth.getUser();
-      if (premiumUser) {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        const meta = currentUser.user_metadata || {};
+        const name = meta.first_name || '';
+        if (name) setFirstName(name);
+
         const { data: premiumRow, error: premiumError } = await supabase
           .from('user_premium')
-          .select('is_premium')
-          .eq('user_id', premiumUser.id)
+          .select('is_premium, premium_expires_at')
+          .eq('user_id', currentUser.id)
           .maybeSingle();
 
         if (premiumError) {
           console.error('Error loading premium status:', premiumError);
         } else if (premiumRow?.is_premium) {
-          setIsPremium(true);
+          // WHY: If expiry exists and is in the past, treat as not premium.
+          // (Lifetime plans have NULL expiry, so they stay premium forever.)
+          if (premiumRow.premium_expires_at) {
+            const expiresAt = new Date(premiumRow.premium_expires_at);
+            if (expiresAt > new Date()) {
+              setIsPremium(true);
+            }
+          } else {
+            setIsPremium(true);
+          }
         }
       }
 
-      // WHY: Restore bank connection state from localStorage first, then DB fallback.
       const savedToken = localStorage.getItem('subsaver_token');
       const savedConnected = localStorage.getItem('subsaver_connected');
       if (savedToken && savedConnected === 'true') {
@@ -718,13 +727,23 @@ export default function Dashboard() {
   const totalMonthly = subscriptions.reduce((sum, s) => sum + s.amount, 0);
   const potentialSavings = flagged.reduce((sum, s) => sum + s.amount, 0);
 
+  // WHY: Premium users see everything. Free users see only first FREE_TIER_LIMIT subs.
+  const visibleSubs = isPremium ? subscriptions : subscriptions.slice(0, FREE_TIER_LIMIT);
+  const hiddenSubs = isPremium ? [] : subscriptions.slice(FREE_TIER_LIMIT);
+  const hiddenMonthlyUSD = hiddenSubs.reduce((sum, s) => sum + s.amount, 0);
+  const hiddenAnnualNGN = Math.round(hiddenMonthlyUSD * CURRENCY.rate * 12);
+
   const searchLower = searchQuery.trim().toLowerCase();
+
+  const flaggedVisible = visibleSubs.filter(s => s.flagged === true);
+  const activeVisible = visibleSubs.filter(s => s.flagged !== true);
+
   const flaggedFiltered = searchLower
-    ? flagged.filter(s => s.merchant.toLowerCase().includes(searchLower))
-    : flagged;
+    ? flaggedVisible.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : flaggedVisible;
   const activeFiltered = searchLower
-    ? active.filter(s => s.merchant.toLowerCase().includes(searchLower))
-    : active;
+    ? activeVisible.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : activeVisible;
 
   const upcomingRenewals = subscriptions
     .filter(s => getDaysUntilRenewal(s.daysSinceLastCharge) <= 7)
@@ -734,8 +753,9 @@ export default function Dashboard() {
   const isSearching = searchLower.length > 0;
 
   const showSoftLimitBanner = !isPremium && subscriptions.length > FREE_TIER_LIMIT;
-  // WHY: Show the empty state when the user has no connected bank AND no subscriptions.
   const showEmptyState = !hasConnectedBank && subscriptions.length === 0;
+
+  const greetingName = firstName ? sanitizeText(firstName) : 'there';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/60 via-white to-white">
@@ -815,17 +835,16 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in">
 
-        {/* WHY: Empty state — no bank connected, no subscriptions. Big friendly CTA. */}
         {showEmptyState ? (
           <div className="max-w-xl mx-auto text-center py-16 sm:py-24">
             <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-600/25">
               <Link2 className="w-10 h-10 text-white" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-3">
-              Connect your bank to get started
+              Hi, {greetingName}
             </h1>
             <p className="text-base text-slate-600 mb-8 max-w-md mx-auto leading-relaxed">
-              Subsaver will scan your transactions, find all your subscriptions, and show you exactly where your money is going.
+              Connect your bank to get started. Subsaver will scan your transactions, find all your subscriptions, and show you exactly where your money is going.
             </p>
             <button
               onClick={handleConnectBank}
@@ -842,7 +861,7 @@ export default function Dashboard() {
           <>
             <div className="mb-6">
               <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-1">
-                Your Subscriptions
+                Hi, {greetingName}
               </h1>
               <p className="text-sm text-slate-500">
                 {subscriptions.length} active · {formatAmount(totalMonthly)} monthly
@@ -852,31 +871,47 @@ export default function Dashboard() {
             {showSoftLimitBanner && (
               <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-blue-600/20 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-                <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
-                  <div className="flex items-start gap-3 flex-1">
+                <div className="relative">
+                  <div className="flex items-start gap-3 mb-4">
                     <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
                       <Lock className="w-5 h-5 text-white" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <p className="font-bold text-base mb-1">
-                        You have {subscriptions.length} subscriptions — free tier shows {FREE_TIER_LIMIT}.
+                        ₦{hiddenAnnualNGN.toLocaleString('en-US')} in subscriptions are hidden
                       </p>
                       <p className="text-sm text-blue-100 leading-relaxed">
-                        Upgrade to Premium to track unlimited subscriptions and unlock SMS + email renewal reminders.
+                        Free tier shows {FREE_TIER_LIMIT} of your {subscriptions.length} subscriptions. Upgrade to see all {hiddenSubs.length} hidden subs and get renewal reminders before you're charged.
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={handleUpgradeClick}
-                    disabled={isProcessingPayment}
-                    className={`bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0 whitespace-nowrap ${
-                      isProcessingPayment
-                        ? 'opacity-70 cursor-not-allowed'
-                        : 'hover:shadow-lg hover:scale-[1.02]'
-                    }`}
-                  >
-                    {isProcessingPayment ? 'Activating…' : 'Upgrade · ₦3,500/mo'}
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => handleUpgradeClick('annual')}
+                      disabled={isProcessingPayment}
+                      className={`flex-1 bg-white text-blue-600 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                        isProcessingPayment
+                          ? 'opacity-70 cursor-not-allowed'
+                          : 'hover:shadow-lg hover:scale-[1.02]'
+                      }`}
+                    >
+                      {isProcessingPayment ? 'Activating…' : 'Unlock Annual · ₦25,000/year'}
+                    </button>
+                    <button
+                      onClick={() => handleUpgradeClick('monthly')}
+                      disabled={isProcessingPayment}
+                      className={`flex-1 bg-white/15 border border-white/30 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
+                        isProcessingPayment
+                          ? 'opacity-70 cursor-not-allowed'
+                          : 'hover:bg-white/20'
+                      }`}
+                    >
+                      Pay Monthly · ₦3,500
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-100 mt-3 text-center">
+                    Annual saves ₦17,000 — that's 4 months free
+                  </p>
                 </div>
               </div>
             )}
@@ -991,7 +1026,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* WHY: No subscriptions yet — bank connected but nothing detected. */}
             {!isSearching && subscriptions.length === 0 && (
               <div className="bg-white rounded-2xl border border-slate-200/70 p-12 text-center mb-8">
                 <Wallet className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -1111,6 +1145,39 @@ export default function Dashboard() {
                       </button>
                     </div>
                   ))}
+                </div>
+              </section>
+            )}
+
+            {/* WHY: Hidden subs block — free users only. Shows count + ₦ value + CTA. */}
+            {!isPremium && hiddenSubs.length > 0 && !isSearching && (
+              <section className="mb-8">
+                <div className="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-8 text-center">
+                  <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
+                    <Lock className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <p className="font-bold text-lg text-slate-900 mb-1">
+                    {hiddenSubs.length} more subscription{hiddenSubs.length > 1 ? 's' : ''} hidden
+                  </p>
+                  <p className="text-sm text-slate-500 mb-5 max-w-md mx-auto">
+                    That's ₦{hiddenAnnualNGN.toLocaleString('en-US')}/year in subscriptions you're not tracking. Upgrade to see everything.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2 justify-center max-w-lg mx-auto">
+                    <button
+                      onClick={() => handleUpgradeClick('annual')}
+                      disabled={isProcessingPayment}
+                      className="flex-1 bg-blue-600 text-white px-5 py-3 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all disabled:opacity-70"
+                    >
+                      Unlock Annual · ₦25,000/yr
+                    </button>
+                    <button
+                      onClick={() => handleUpgradeClick('monthly')}
+                      disabled={isProcessingPayment}
+                      className="flex-1 bg-white border border-slate-300 text-slate-700 px-5 py-3 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-all disabled:opacity-70"
+                    >
+                      Pay Monthly · ₦3,500
+                    </button>
+                  </div>
                 </div>
               </section>
             )}

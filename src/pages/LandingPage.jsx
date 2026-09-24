@@ -226,48 +226,68 @@ export default function LandingPage() {
               Simple, transparent pricing
             </h2>
             <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto">
-              Get more from your finances with Subsaver Premium
+              Cancel two forgotten subscriptions and Subsaver pays for itself.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {/* Free */}
             <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300">
               <h3 className="text-xl font-bold text-slate-700 mb-2">Free</h3>
               <div className="text-4xl font-extrabold text-slate-900 mb-6">
-                ₦0<span className="text-base font-normal text-slate-500">/month</span>
+                ₦0<span className="text-base font-normal text-slate-500">/forever</span>
               </div>
               <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Track up to 3 subscriptions</li>
-                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Bank connection (Mono)</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Track up to 2 subscriptions</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Bank connection via Mono</li>
                 <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Detect forgotten subscriptions</li>
                 <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Cancel guides</li>
               </ul>
-              <button onClick={handleGetStarted} className="w-full border-2 border-blue-600 text-blue-600 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-all">
-                Get Started Free
+              <button onClick={handleGetStarted} className="w-full border-2 border-slate-300 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition-all">
+                Start Free
               </button>
             </div>
 
-            {/* Premium */}
-            <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl p-8 shadow-xl shadow-blue-600/20 text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-yellow-400 text-blue-900 px-4 py-1 rounded-bl-2xl text-xs font-bold tracking-wide">MOST POPULAR</div>
-              <h3 className="text-xl font-bold mb-2">Premium</h3>
-              <div className="text-4xl font-extrabold mb-6">
-                ₦3,500<span className="text-base font-normal text-blue-100">/month</span>
+            {/* Premium Monthly */}
+            <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300">
+              <h3 className="text-xl font-bold text-slate-700 mb-2">Monthly</h3>
+              <div className="text-4xl font-extrabold text-slate-900 mb-6">
+                ₦3,500<span className="text-base font-normal text-slate-500">/month</span>
               </div>
               <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Unlimited subscriptions</li>
-                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> SMS reminders before charges</li>
-                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Email cancellation templates</li>
-                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Priority support</li>
-                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Share with 1 family member</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Unlimited subscriptions</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Renewal reminders</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Email cancellation templates</li>
+                <li className="flex items-center gap-3 text-slate-600 text-sm"><CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" /> Priority support</li>
+              </ul>
+              <button onClick={handleGetStarted} className="w-full border-2 border-blue-600 text-blue-600 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-all">
+                Choose Monthly
+              </button>
+            </div>
+
+            {/* Premium Annual */}
+            <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl p-8 shadow-xl shadow-blue-600/20 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-yellow-400 text-blue-900 px-4 py-1 rounded-bl-2xl text-xs font-bold tracking-wide">BEST VALUE</div>
+              <h3 className="text-xl font-bold mb-2">Annual</h3>
+              <div className="text-4xl font-extrabold mb-1">
+                ₦25,000<span className="text-base font-normal text-blue-100">/year</span>
+              </div>
+              <p className="text-blue-100 text-sm mb-6">≈ ₦2,083/month — save ₦17,000</p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Everything in Monthly</li>
+                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> 12 months upfront</li>
+                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> Family sharing (1 member)</li>
+                <li className="flex items-center gap-3 text-sm"><CheckCircle className="w-5 h-5 flex-shrink-0" /> No monthly charges</li>
               </ul>
               <button onClick={handleGetStarted} className="w-full bg-white text-blue-600 py-3 rounded-xl font-semibold hover:shadow-lg hover:scale-[1.02] transition-all">
-                Start Premium
+                Save ₦17,000 — Go Annual
               </button>
-              <p className="text-center text-blue-100 text-xs mt-4">Annual plan: ₦35,000/year — save ₦7,000</p>
             </div>
           </div>
+
+          <p className="text-center text-slate-500 text-sm mt-8">
+            All plans include read-only bank access via Mono. We can't move your money.
+          </p>
         </div>
       </section>
 
