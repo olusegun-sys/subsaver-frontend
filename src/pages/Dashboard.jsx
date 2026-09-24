@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import {
   LogOut, X, Plus, CreditCard, RefreshCw, AlertTriangle,
-  ChevronRight, Search, SlidersHorizontal, Bell, Wallet,
-  Calendar, TrendingUp, Circle, Lock, Link2
+  ChevronRight, ChevronDown, Search, SlidersHorizontal, Bell, Wallet,
+  Calendar, TrendingUp, Circle, Lock, Link2, Sparkles, Check
 } from 'lucide-react';
 import { toast } from '../components/Toast';
 
@@ -321,6 +321,10 @@ export default function Dashboard() {
   // WHY: Tracks an in-flight payment so we can show "activating..." state.
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
+  // WHY: Sort menu state — 'recent' | 'amount-desc' | 'amount-asc' | 'name'.
+  const [sortBy, setSortBy] = useState('amount-desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
   // WHY: Backend URL (subsaver-backend-1.onrender.com). Verified live via /api/health.
   const BACKEND_URL = 'https://subsaver-backend-1.onrender.com';
 
@@ -543,7 +547,6 @@ export default function Dashboard() {
   };
 
   // WHY: Extracted async verification logic. Called by the sync Paystack callback.
-  // Now accepts tier so the backend knows monthly vs annual.
   const verifyPaymentWithBackend = async (reference, tier) => {
     setIsProcessingPayment(true);
     toast.info('Payment received. Activating your account...');
@@ -584,7 +587,6 @@ export default function Dashboard() {
   };
 
   // WHY: Opens Paystack checkout, verifies payment on backend, activates premium.
-  // Accepts tier: 'monthly' (default) or 'annual'.
   const handleUpgradeClick = async (tier) => {
     if (isProcessingPayment) return;
 
@@ -610,7 +612,6 @@ export default function Dashboard() {
       return;
     }
 
-    // WHY: Amount depends on chosen tier. Default to monthly if no tier passed.
     const chosenTier = tier === 'annual' ? 'annual' : 'monthly';
     const amountKobo = chosenTier === 'annual' ? TIER_ANNUAL_KOBO : TIER_MONTHLY_KOBO;
 
@@ -668,8 +669,6 @@ export default function Dashboard() {
         if (premiumError) {
           console.error('Error loading premium status:', premiumError);
         } else if (premiumRow?.is_premium) {
-          // WHY: If expiry exists and is in the past, treat as not premium.
-          // (Lifetime plans have NULL expiry, so they stay premium forever.)
           if (premiumRow.premium_expires_at) {
             const expiresAt = new Date(premiumRow.premium_expires_at);
             if (expiresAt > new Date()) {
@@ -722,6 +721,31 @@ export default function Dashboard() {
     );
   }
 
+  // WHY: Sort helper — applies user's chosen sort to a list of subs.
+  const applySort = (list) => {
+    const copy = [...list];
+    if (sortBy === 'amount-desc') return copy.sort((a, b) => b.amount - a.amount);
+    if (sortBy === 'amount-asc') return copy.sort((a, b) => a.amount - b.amount);
+    if (sortBy === 'name') return copy.sort((a, b) => a.merchant.localeCompare(b.merchant));
+    return copy.sort((a, b) => new Date(b.lastCharge) - new Date(a.lastCharge));
+  };
+
+  // WHY: Human-readable label for the current sort selection.
+  const sortLabel = {
+    'amount-desc': 'Highest Amount',
+    'amount-asc': 'Lowest Amount',
+    'name': 'A → Z',
+    'recent': 'Most Recent',
+  }[sortBy] || 'Sort';
+
+  // WHY: Sort options for the dropdown menu — declared here so both refs share them.
+  const sortOptions = [
+    { key: 'amount-desc', label: 'Highest Amount' },
+    { key: 'amount-asc', label: 'Lowest Amount' },
+    { key: 'name', label: 'Merchant A → Z' },
+    { key: 'recent', label: 'Most Recent Charge' },
+  ];
+
   const flagged = subscriptions.filter(s => s.flagged === true);
   const active = subscriptions.filter(s => s.flagged !== true);
   const totalMonthly = subscriptions.reduce((sum, s) => sum + s.amount, 0);
@@ -735,15 +759,16 @@ export default function Dashboard() {
 
   const searchLower = searchQuery.trim().toLowerCase();
 
-  const flaggedVisible = visibleSubs.filter(s => s.flagged === true);
-  const activeVisible = visibleSubs.filter(s => s.flagged !== true);
+  // WHY: Apply sort to visible lists before filtering by search.
+  const flaggedSorted = applySort(visibleSubs.filter(s => s.flagged === true));
+  const activeSorted = applySort(visibleSubs.filter(s => s.flagged !== true));
 
   const flaggedFiltered = searchLower
-    ? flaggedVisible.filter(s => s.merchant.toLowerCase().includes(searchLower))
-    : flaggedVisible;
+    ? flaggedSorted.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : flaggedSorted;
   const activeFiltered = searchLower
-    ? activeVisible.filter(s => s.merchant.toLowerCase().includes(searchLower))
-    : activeVisible;
+    ? activeSorted.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : activeSorted;
 
   const upcomingRenewals = subscriptions
     .filter(s => getDaysUntilRenewal(s.daysSinceLastCharge) <= 7)
@@ -772,9 +797,11 @@ export default function Dashboard() {
             <div className="hidden md:flex items-center gap-2">
               <button
                 onClick={handleDetectForgotten}
-                className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full transition-all"
+                className="group relative inline-flex items-center gap-2 bg-gradient-to-b from-slate-50 to-slate-100 hover:from-white hover:to-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow-md transition-all duration-200"
               >
-                <RefreshCw className="w-4 h-4" />
+                <span className="relative flex items-center justify-center w-4 h-4">
+                  <Sparkles className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform duration-300" />
+                </span>
                 Detect Forgotten
               </button>
 
@@ -786,7 +813,7 @@ export default function Dashboard() {
               ) : (
                 <button
                   onClick={handleConnectBank}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-full transition-all shadow-lg shadow-blue-600/20"
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-full transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-600/30 hover:scale-[1.02]"
                 >
                   <Plus className="w-4 h-4" />
                   Connect Bank
@@ -869,47 +896,59 @@ export default function Dashboard() {
             </div>
 
             {showSoftLimitBanner && (
-              <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 sm:p-6 text-white shadow-lg shadow-blue-600/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-                <div className="relative">
-                  <div className="flex items-start gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-                      <Lock className="w-5 h-5 text-white" />
+              <div className="mb-6 relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-blue-900 text-white shadow-2xl shadow-slate-900/30">
+                <div className="absolute -top-24 -right-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+                <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                <div className="relative p-6 sm:p-7">
+                  <div className="flex items-start gap-4 mb-5">
+                    <div className="w-11 h-11 rounded-xl bg-white/10 backdrop-blur-sm border border-white/15 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-5 h-5 text-blue-300" />
                     </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-base mb-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-sm border border-white/15 text-blue-100 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-full mb-3">
+                        Premium
+                      </div>
+                      <p className="font-bold text-lg sm:text-xl leading-snug mb-1.5">
                         ₦{hiddenAnnualNGN.toLocaleString('en-US')} in subscriptions are hidden
                       </p>
-                      <p className="text-sm text-blue-100 leading-relaxed">
-                        Free tier shows {FREE_TIER_LIMIT} of your {subscriptions.length} subscriptions. Upgrade to see all {hiddenSubs.length} hidden subs and get renewal reminders before you're charged.
+                      <p className="text-sm text-slate-300 leading-relaxed max-w-2xl">
+                        You're tracking {subscriptions.length} subscriptions, but the free tier only shows {FREE_TIER_LIMIT}. Unlock all {hiddenSubs.length} hidden subs and never miss a renewal.
                       </p>
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
+
+                  <div className="flex flex-col sm:flex-row gap-2.5">
                     <button
                       onClick={() => handleUpgradeClick('annual')}
                       disabled={isProcessingPayment}
-                      className={`flex-1 bg-white text-blue-600 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                      className={`group flex-1 inline-flex items-center justify-center gap-2 bg-white text-slate-900 px-5 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
                         isProcessingPayment
                           ? 'opacity-70 cursor-not-allowed'
-                          : 'hover:shadow-lg hover:scale-[1.02]'
+                          : 'hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5'
                       }`}
                     >
-                      {isProcessingPayment ? 'Activating…' : 'Unlock Annual · ₦25,000/year'}
+                      {isProcessingPayment ? 'Activating…' : (
+                        <>
+                          Unlock Annual · ₦25,000/yr
+                          <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                        </>
+                      )}
                     </button>
                     <button
                       onClick={() => handleUpgradeClick('monthly')}
                       disabled={isProcessingPayment}
-                      className={`flex-1 bg-white/15 border border-white/30 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
+                      className={`flex-1 bg-white/10 backdrop-blur-sm border border-white/20 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                         isProcessingPayment
                           ? 'opacity-70 cursor-not-allowed'
-                          : 'hover:bg-white/20'
+                          : 'hover:bg-white/15 hover:border-white/30'
                       }`}
                     >
                       Pay Monthly · ₦3,500
                     </button>
                   </div>
-                  <p className="text-xs text-blue-100 mt-3 text-center">
+
+                  <p className="text-xs text-slate-400 mt-3 text-center">
                     Annual saves ₦17,000 — that's 4 months free
                   </p>
                 </div>
@@ -917,17 +956,56 @@ export default function Dashboard() {
             )}
 
             <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
-              <button className="flex-shrink-0 inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25">
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                Sort by Type
-              </button>
+              {/* WHY: Sort dropdown — backdrop rendered FIRST (behind), menu SECOND (in front).
+                  This ordering prevents the click-outside backdrop from stealing clicks meant for the menu. */}
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={() => setShowSortMenu(prev => !prev)}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 transition-all"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  {sortLabel}
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showSortMenu && (
+                  <>
+                    {/* WHY: Invisible click-catcher rendered FIRST so it sits behind the menu in z-order */}
+                    <div
+                      className="fixed inset-0 z-20"
+                      onClick={() => setShowSortMenu(false)}
+                    ></div>
+                    {/* WHY: Menu rendered SECOND with higher z-index → receives clicks reliably */}
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl shadow-slate-900/10 border border-slate-200 overflow-hidden z-30 animate-fade-in">
+                      {sortOptions.map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            setSortBy(opt.key);
+                            setShowSortMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between text-left px-4 py-3 text-sm transition-colors ${
+                            sortBy === opt.key
+                              ? 'bg-blue-50 text-blue-700 font-semibold'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {sortBy === opt.key && <Check className="w-4 h-4 text-blue-600" />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
 
               <button
                 onClick={() => setShowSearch(prev => !prev)}
                 className={`flex-shrink-0 inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition ${
                   showSearch || isSearching
                     ? 'bg-blue-50 border border-blue-200 text-blue-700'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:border-slate-300'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                 }`}
               >
                 <Search className="w-3.5 h-3.5" />
@@ -936,7 +1014,7 @@ export default function Dashboard() {
 
               <button
                 onClick={() => setShowAlerts(true)}
-                className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 transition relative"
+                className="flex-shrink-0 inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-2 rounded-full hover:border-slate-300 hover:bg-slate-50 transition relative"
               >
                 <Bell className="w-3.5 h-3.5" />
                 Alerts
@@ -978,35 +1056,38 @@ export default function Dashboard() {
               </div>
             )}
 
-            <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-3xl p-6 sm:p-8 mb-6 shadow-xl shadow-blue-600/20 text-white overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            {/* WHY: Hero spend card — now uses the same premium dark gradient as the top banner. */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-blue-900 p-6 sm:p-8 mb-6 shadow-2xl shadow-slate-900/30 text-white">
+              <div className="absolute -top-24 -right-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+              <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
               <div className="relative">
-                <p className="text-xs uppercase tracking-widest text-blue-100 font-semibold mb-2">
+                <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-3">
                   You're spending
                 </p>
                 <div className="flex items-end gap-3 flex-wrap">
                   <p className="text-4xl sm:text-5xl font-extrabold tracking-tight">
                     {formatAmount(totalMonthly)}
                   </p>
-                  <p className="text-blue-100 font-medium mb-1.5">/ month</p>
+                  <p className="text-slate-400 font-medium mb-1.5">/ month</p>
                 </div>
-                <p className="text-sm text-blue-100 mt-2">
+                <p className="text-sm text-slate-300 mt-2">
                   That's <span className="font-bold text-white">{formatYearly(totalMonthly)}</span> if nothing changes.
                 </p>
 
-                <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-4 pt-4 border-t border-white/15">
+                <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-5 pt-5 border-t border-white/10">
                   <div>
-                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Potential Savings</p>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Potential Savings</p>
                     <p className="text-base sm:text-lg font-bold text-white">{formatAmount(potentialSavings)}/mo</p>
                   </div>
-                  <div className="hidden sm:block w-px h-8 bg-white/20"></div>
+                  <div className="hidden sm:block w-px h-8 bg-white/10"></div>
                   <div>
-                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Forgotten</p>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Forgotten</p>
                     <p className="text-base sm:text-lg font-bold text-white">{flagged.length}</p>
                   </div>
-                  <div className="hidden sm:block w-px h-8 bg-white/20"></div>
+                  <div className="hidden sm:block w-px h-8 bg-white/10"></div>
                   <div>
-                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-blue-100 font-semibold mb-0.5">Active</p>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Active</p>
                     <p className="text-base sm:text-lg font-bold text-white">{active.length}</p>
                   </div>
                 </div>
@@ -1055,7 +1136,7 @@ export default function Dashboard() {
                   {flaggedFiltered.map((sub, idx) => (
                     <div
                       key={sub.id}
-                      className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-red-50/30 transition-colors ${
+                      className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-red-50/40 transition-colors ${
                         idx !== 0 ? 'border-t border-slate-100' : ''
                       }`}
                     >
@@ -1088,7 +1169,7 @@ export default function Dashboard() {
 
                       <button
                         onClick={() => setSelectedSub(sub)}
-                        className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all flex-shrink-0"
+                        className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all hover:shadow-md hover:shadow-red-600/30 flex-shrink-0 whitespace-nowrap"
                       >
                         Cancel
                       </button>
@@ -1114,7 +1195,7 @@ export default function Dashboard() {
                   {activeFiltered.map((sub, idx) => (
                     <div
                       key={sub.id}
-                      className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-blue-50/30 transition-colors group ${
+                      className={`flex items-center gap-3 p-3 sm:p-4 hover:bg-blue-50/40 transition-colors group ${
                         idx !== 0 ? 'border-t border-slate-100' : ''
                       }`}
                     >
@@ -1145,39 +1226,6 @@ export default function Dashboard() {
                       </button>
                     </div>
                   ))}
-                </div>
-              </section>
-            )}
-
-            {/* WHY: Hidden subs block — free users only. Shows count + ₦ value + CTA. */}
-            {!isPremium && hiddenSubs.length > 0 && !isSearching && (
-              <section className="mb-8">
-                <div className="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-8 text-center">
-                  <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                    <Lock className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <p className="font-bold text-lg text-slate-900 mb-1">
-                    {hiddenSubs.length} more subscription{hiddenSubs.length > 1 ? 's' : ''} hidden
-                  </p>
-                  <p className="text-sm text-slate-500 mb-5 max-w-md mx-auto">
-                    That's ₦{hiddenAnnualNGN.toLocaleString('en-US')}/year in subscriptions you're not tracking. Upgrade to see everything.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2 justify-center max-w-lg mx-auto">
-                    <button
-                      onClick={() => handleUpgradeClick('annual')}
-                      disabled={isProcessingPayment}
-                      className="flex-1 bg-blue-600 text-white px-5 py-3 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all disabled:opacity-70"
-                    >
-                      Unlock Annual · ₦25,000/yr
-                    </button>
-                    <button
-                      onClick={() => handleUpgradeClick('monthly')}
-                      disabled={isProcessingPayment}
-                      className="flex-1 bg-white border border-slate-300 text-slate-700 px-5 py-3 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-all disabled:opacity-70"
-                    >
-                      Pay Monthly · ₦3,500
-                    </button>
-                  </div>
                 </div>
               </section>
             )}
