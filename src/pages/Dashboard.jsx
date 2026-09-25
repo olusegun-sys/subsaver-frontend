@@ -9,11 +9,10 @@ import {
 import { toast } from '../components/Toast';
 import Logo from '../components/Logo';
 
-// CURRENCY: Configuration - Change code to 'USD' for dollars, 'NGN' for Naira
+// CURRENCY: NGN-native configuration. No exchange rate — amounts stored as naira.
 const CURRENCY = {
   code: 'NGN',
   symbol: '₦',
-  rate: 1550
 };
 
 // WHY: Free tier limit — 2 subs. Nigerian users typically have 3-6 subs, so
@@ -24,28 +23,38 @@ const FREE_TIER_LIMIT = 2;
 const TIER_MONTHLY_KOBO = 350000;
 const TIER_ANNUAL_KOBO = 2500000;
 
-// CURRENCY: Helper function to format amounts with comma separators
-// WHY: Amounts are now stored as raw NGN naira. No exchange-rate conversion.
-// Mono returns kobo; detection.js divides by 100 before storage. Display is direct.
+// WHY: Typical Nigerian demo profile — 6 realistic subscriptions (mix of active + forgotten).
+// Loaded only when the URL has ?demo=1. Never touches the DB.
+// Amounts are in NGN — matching the NGN-native storage contract.
+const DEMO_SUBSCRIPTIONS = [
+  { id: 'demo_netflix', merchant: 'Netflix',        amount: 6500,  lastCharge: '2026-09-15', daysSinceLastCharge: 11,  flagged: false, status: 'active' },
+  { id: 'demo_spotify', merchant: 'Spotify',        amount: 2500,  lastCharge: '2026-09-08', daysSinceLastCharge: 18,  flagged: false, status: 'active' },
+  { id: 'demo_dstv',    merchant: 'DSTV Compact',   amount: 19000, lastCharge: '2026-09-03', daysSinceLastCharge: 23,  flagged: false, status: 'active' },
+  { id: 'demo_gym',     merchant: 'Gym Membership', amount: 8000,  lastCharge: '2026-06-12', daysSinceLastCharge: 106, flagged: true,  status: 'active' },
+  { id: 'demo_icloud',  merchant: 'iCloud Storage', amount: 1200,  lastCharge: '2026-04-20', daysSinceLastCharge: 159, flagged: true,  status: 'active' },
+  { id: 'demo_canva',   merchant: 'Canva Pro',      amount: 4500,  lastCharge: '2026-05-30', daysSinceLastCharge: 119, flagged: true,  status: 'active' },
+];
+
+// CURRENCY: Format NGN amounts directly. No multiplication by any exchange rate.
+// WHY: Mono returns naira-kobo; detection.js divides by 100 before storage. Display is direct.
 const formatAmount = (amountInNaira) => {
   const formatted = Math.round(amountInNaira).toLocaleString('en-US');
   return `${CURRENCY.symbol}${formatted}`;
 };
 
-// WHY: Rocket Money shows yearly totals per section — small helper
-const formatYearly = (monthlyTotalUSD) => {
-  const yearlyUSD = monthlyTotalUSD * 12;
-  const yearlyNGN = yearlyUSD * CURRENCY.rate;
+// WHY: Rocket Money shows yearly totals per section — small helper.
+const formatYearly = (monthlyTotalNGN) => {
+  const yearlyNGN = monthlyTotalNGN * 12;
   return `${CURRENCY.symbol}${Math.round(yearlyNGN).toLocaleString('en-US')}/yr`;
 };
 
-// SECURITY: Sanitize text to prevent XSS attacks
+// SECURITY: Sanitize text to prevent XSS attacks.
 const sanitizeText = (text) => {
   if (!text) return '';
   return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
-// SECURITY: Validate session is still active on Supabase
+// SECURITY: Validate session is still active on Supabase.
 const validateSession = async (navigate) => {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
@@ -56,7 +65,7 @@ const validateSession = async (navigate) => {
   return true;
 };
 
-// WHY: Deterministic color per merchant (Rocket Money-style avatars)
+// WHY: Deterministic color per merchant (Rocket Money-style avatars).
 const getMerchantColor = (name) => {
   const colors = [
     'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500',
@@ -68,7 +77,7 @@ const getMerchantColor = (name) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-// WHY: Rocket Money shows cadence under merchant name
+// WHY: Rocket Money shows cadence under merchant name.
 const getCadence = (days) => {
   if (!days) return 'Monthly';
   if (days <= 10) return 'Weekly';
@@ -77,7 +86,7 @@ const getCadence = (days) => {
   return 'Yearly';
 };
 
-// WHY: Compute the number of days in the cadence cycle (7 / 30 / 90 / 365)
+// WHY: Compute the number of days in the cadence cycle (7 / 30 / 90 / 365).
 const getCadenceDays = (daysSinceLastCharge) => {
   if (!daysSinceLastCharge) return 30;
   if (daysSinceLastCharge <= 10) return 7;
@@ -324,7 +333,11 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState('amount-desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-    // WHY: Backend URL now driven by env var so staging/live can differ without code edits.
+  // WHY: Demo mode — activated by ?demo=1 in the URL. Loads seeded data instead
+  // of hitting the DB. Lets us demo the detection UI without real Mono data.
+  const isDemoMode = new URLSearchParams(window.location.search).get('demo') === '1';
+
+  // WHY: Backend URL now driven by env var so staging/live can differ without code edits.
   // Falls back to the known production URL if the env var is missing at build time.
   // (Vite bakes VITE_* at build time — set VITE_BACKEND_URL on Render frontend.)
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://subsaver-backend-1.onrender.com';
@@ -445,6 +458,16 @@ export default function Dashboard() {
     const isValid = await validateSession(navigate);
     if (!isValid) return;
     setIsSaving(true);
+
+    // WHY: Demo mode — cannot write to DB without a real user. Simulate locally.
+    if (isDemoMode) {
+      setSubscriptions(prev => prev.filter(sub => sub.id !== selectedSub.id));
+      toast.success(`${selectedSub.merchant} cancelled successfully!`);
+      setSelectedSub(null);
+      setIsSaving(false);
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { error } = await supabase.from('user_cancellations').insert({
@@ -491,13 +514,10 @@ export default function Dashboard() {
       toast.error('Please connect your bank first.');
       return;
     }
+
     try {
-      // WHY: Call the backend's detection route. Currently stubbed to return an
-      // empty list — Session 1B will make this return real subscriptions found
-      // in the user's Mono transaction history.
-      // WHY: We read the response as TEXT first (not JSON) so that non-JSON error
-      // pages (Render 404s, 502/504 gateway errors, cold-start HTML) don't crash
-      // with "Unexpected token '<'". Only parse JSON if it looks like JSON.
+      // WHY: Call the backend's detection route. Reads raw text first so non-JSON
+      // error pages (Render 404/502/504, cold-start HTML) don't crash on parse.
       const res = await fetch(`${BACKEND_URL}/api/detect-subscriptions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -509,20 +529,16 @@ export default function Dashboard() {
       try {
         data = rawText ? JSON.parse(rawText) : {};
       } catch {
-        // WHY: Non-JSON response — usually a 404/502/504 HTML page from Render.
-        // Give the user a real diagnostic instead of a cryptic parse error.
         console.error(`[detect-subscriptions] Non-JSON response (status ${res.status}):`, rawText.slice(0, 200));
         toast.error(`Server error (${res.status}). Please try again in a moment.`);
         return;
       }
 
       if (!res.ok) {
-        // WHY: Prefer the backend's own error message if it sent one.
         toast.error(data.error || `Request failed (${res.status}). Please try again.`);
         return;
       }
 
-      // WHY: No fabricated data. If detection is not implemented yet, be honest.
       if (data.notImplemented) {
         toast.info('Detection engine is being upgraded. Please check back soon.');
         return;
@@ -534,7 +550,6 @@ export default function Dashboard() {
       }
 
       // WHY: Persist each detected subscription so it survives refresh.
-      // (Session 1B: backend will return real ones. This write path is ready.)
       for (const sub of data.subscriptions) {
         await saveDetectedSubscription(sub);
       }
@@ -546,13 +561,13 @@ export default function Dashboard() {
     }
   };
 
-   const handleConnectBank = async () => {
+  const handleConnectBank = async () => {
     // WHY: Fetch the authenticated user BEFORE opening Mono so we can pass their
     // real name/email instead of a hardcoded placeholder.
     const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-    import('@mono.co/connect.js').then((MonoConnect) => {      
-        const config = {
+    import('@mono.co/connect.js').then((MonoConnect) => {
+      const config = {
         key: import.meta.env.VITE_MONO_PUBLIC_KEY,
         // WHY: Send the real logged-in user's identity to Mono instead of a
         // hardcoded placeholder. Falls back to neutral strings if metadata missing.
@@ -694,13 +709,24 @@ export default function Dashboard() {
     localStorage.removeItem('subsaver_mode');
     await supabase.auth.signOut();
     // WHY: Users logging out want to log back in, not browse the marketing page.
-    // Sending them to /login gives them the form immediately.
     navigate('/login');
   };
 
   useEffect(() => {
     const init = async () => {
       setLoading(true);
+
+      // WHY: Demo mode — bypass all DB reads, inject seeded subscriptions.
+      // Sacred features untouched: cancel button, bank persistence, list display
+      // all still work normally — they just operate on this in-memory list.
+      if (isDemoMode) {
+        setSubscriptions(DEMO_SUBSCRIPTIONS);
+        setHasConnectedBank(true);
+        setFirstName('Demo');
+        setLoading(false);
+        return;
+      }
+
       await loadData();
 
       const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -806,8 +832,6 @@ export default function Dashboard() {
   //   1. Filter by search (if any) across ALL subs
   //   2. Sort that filtered list
   //   3. THEN slice for free-tier gating
-  // This ensures sort actually surfaces the largest/oldest/alphabetical subs
-  // into the visible window.
   const searchedSubs = searchLower
     ? subscriptions.filter(s => s.merchant.toLowerCase().includes(searchLower))
     : subscriptions;
@@ -818,8 +842,8 @@ export default function Dashboard() {
   // of the SORTED list — so the top of the sort lands in the visible window.
   const visibleSubs = isPremium ? sortedSubs : sortedSubs.slice(0, FREE_TIER_LIMIT);
   const hiddenSubs = isPremium ? [] : sortedSubs.slice(FREE_TIER_LIMIT);
-  const hiddenMonthlyUSD = hiddenSubs.reduce((sum, s) => sum + s.amount, 0);
-  const hiddenAnnualNGN = Math.round(hiddenMonthlyUSD * CURRENCY.rate * 12);
+  const hiddenMonthlyNGN = hiddenSubs.reduce((sum, s) => sum + s.amount, 0);
+  const hiddenAnnualNGN = Math.round(hiddenMonthlyNGN * 12);
 
   // WHY: Split visible subs into flagged vs active sections AFTER sort+slice.
   const flaggedFiltered = visibleSubs.filter(s => s.flagged === true);
