@@ -1,19 +1,19 @@
-import { CreditCard } from 'lucide-react';
+ï»¿import { CreditCard } from 'lucide-react';
 
 /**
- * SubSaver Logo — distinctive mark representing "cancel hidden subscriptions".
+ * SubSaver Logo â€” distinctive mark representing "cancel hidden subscriptions".
  *
  * Concept: circular badge with a diagonal cut (like a "remove" symbol) + coins.
  * Renders in pure SVG so it scales cleanly from 16px to 200px.
  *
  * Props:
- *   size      — number (px), default 36
- *   showText  — boolean, default true (renders "SubSaver" next to mark)
- *   textSize  — 'sm' | 'md' | 'lg' | 'xl', default 'md'
+ *   size      â€” number (px), default 36
+ *   showText  â€” boolean, default true (renders "SubSaver" next to mark)
+ *   textSize  â€” 'sm' | 'md' | 'lg' | 'xl', default 'md'
  */
 export default function Logo({ size = 36, showText = true, textSize = 'md' }) {
   // WHY: Map text size prop to Tailwind classes so the same logo works in nav,
-  // hero, footer, login card — all without duplicating markup.
+  // hero, footer, login card â€” all without duplicating markup.
   const textClass = {
     sm: 'text-base',
     md: 'text-lg sm:text-xl',
@@ -23,7 +23,7 @@ export default function Logo({ size = 36, showText = true, textSize = 'md' }) {
 
   return (
     <div className="flex items-center gap-2.5">
-      {/* WHY: SVG badge — rounded square with gradient, diagonal cut, two coin dots. */}
+      {/* WHY: SVG badge â€” rounded square with gradient, diagonal cut, two coin dots. */}
       <svg
         width={size}
         height={size}
@@ -43,7 +43,7 @@ export default function Logo({ size = 36, showText = true, textSize = 'md' }) {
         {/* Rounded square background */}
         <rect x="2" y="2" width="36" height="36" rx="10" fill="url(#subsaverGrad)" />
 
-        {/* Diagonal cut — signals cancellation */}
+        {/* Diagonal cut â€” signals cancellation */}
         <path
           d="M 12 12 L 28 28"
           stroke="#ffffff"
@@ -59,7 +59,7 @@ export default function Logo({ size = 36, showText = true, textSize = 'md' }) {
         <circle cx="26" cy="26" r="2.5" fill="#ffffff" opacity="0.6" />
       </svg>
 
-      {/* Brand text — blue to match the mark */}
+      {/* Brand text â€” blue to match the mark */}
       {showText && (
         <span className={`font-bold tracking-tight text-blue-600 ${textClass}`}>
           SubSaver
@@ -69,7 +69,7 @@ export default function Logo({ size = 36, showText = true, textSize = 'md' }) {
   );
 }
 
-/** Alternative smaller mark — just the SVG, no text. */
+/** Alternative smaller mark â€” just the SVG, no text. */
 export function LogoMark({ size = 32 }) {
   return <Logo size={size} showText={false} />;
 }
