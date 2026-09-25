@@ -2,11 +2,12 @@
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import {
-  LogOut, X, Plus, CreditCard, RefreshCw, AlertTriangle,
+  LogOut, X, Plus, RefreshCw, AlertTriangle,
   ChevronRight, ChevronDown, Search, SlidersHorizontal, Bell, Wallet,
   Calendar, TrendingUp, Circle, Lock, Link2, Sparkles, Check
 } from 'lucide-react';
 import { toast } from '../components/Toast';
+import Logo from '../components/Logo';
 
 // CURRENCY: Configuration - Change code to 'USD' for dollars, 'NGN' for Naira
 const CURRENCY = {
@@ -24,13 +25,11 @@ const TIER_MONTHLY_KOBO = 350000;
 const TIER_ANNUAL_KOBO = 2500000;
 
 // CURRENCY: Helper function to format amounts with comma separators
-const formatAmount = (amountInUSD) => {
-  if (CURRENCY.code === 'USD') {
-    return `$${amountInUSD.toFixed(2)}`;
-  }
-  const nairaAmount = amountInUSD * CURRENCY.rate;
-  const formattedNaira = Math.round(nairaAmount).toLocaleString('en-US');
-  return `${CURRENCY.symbol}${formattedNaira}`;
+// WHY: Amounts are now stored as raw NGN naira. No exchange-rate conversion.
+// Mono returns kobo; detection.js divides by 100 before storage. Display is direct.
+const formatAmount = (amountInNaira) => {
+  const formatted = Math.round(amountInNaira).toLocaleString('en-US');
+  return `${CURRENCY.symbol}${formatted}`;
 };
 
 // WHY: Rocket Money shows yearly totals per section — small helper
@@ -325,8 +324,10 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState('amount-desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-  // WHY: Backend URL (subsaver-backend-1.onrender.com). Verified live via /api/health.
-  const BACKEND_URL = 'https://subsaver-backend-1.onrender.com';
+    // WHY: Backend URL now driven by env var so staging/live can differ without code edits.
+  // Falls back to the known production URL if the env var is missing at build time.
+  // (Vite bakes VITE_* at build time — set VITE_BACKEND_URL on Render frontend.)
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://subsaver-backend-1.onrender.com';
 
   const loadKeptSubscriptions = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -464,57 +465,103 @@ export default function Dashboard() {
   };
 
   const handleDetectForgotten = async () => {
+    // WHY: Session validation — sacred pattern. Never touch DB without a live session.
     const isValid = await validateSession(navigate);
     if (!isValid) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { toast.error('Please log in to detect forgotten subscriptions'); return; }
-    const { data: existingDetected, error: loadError } = await supabase
-      .from('detected_subscriptions').select('subscription_id').eq('user_id', user.id);
-    if (loadError) {
-      console.error('Error loading detected subscriptions:', loadError);
-      toast.error('Unable to check for forgotten subscriptions. Please try again.');
+
+    // WHY: We need the Mono access token to ask the backend to scan transactions.
+    // Reads from localStorage first (fast), falls back to DB (durable).
+    let accessToken = localStorage.getItem('subsaver_token');
+    if (!accessToken) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Please log in to detect forgotten subscriptions');
+        return;
+      }
+      const { data: tokenRows } = await supabase
+        .from('user_tokens')
+        .select('access_token')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      accessToken = tokenRows?.[0]?.access_token || null;
+    }
+
+    if (!accessToken) {
+      toast.error('Please connect your bank first.');
       return;
     }
-    const existingIds = existingDetected?.map(d => d.subscription_id) || [];
-    const merchants = [
-      'Forgotten Gym Pass', 'Old Magazine', 'Unused Software', 'Dormant Cloud Backup',
-      'Abandoned Domain', 'Old Insurance', 'Forgotten Streaming', 'Unused Project Tool',
-      'Dormant CRM', 'Old News', 'Forgotten Meal Kit', 'Unused Design Tool',
-      'Dormant VPN', 'Old Dating App', 'Forgotten Music Service', 'Unused Storage'
-    ];
-    const amounts = [4.99, 7.99, 9.99, 12.99, 14.99, 19.99, 24.99, 29.99, 49.99, 89.99, 99.99, 149.99];
-    const daysSinceOptions = [30, 45, 60, 75, 90, 120, 150, 180, 210, 240, 270, 300, 330, 365];
-    let newSub = null;
-    let attempts = 0;
-    const maxAttempts = 100;
-    while (!newSub && attempts < maxAttempts) {
-      const randomMerchant = merchants[Math.floor(Math.random() * merchants.length)];
-      const randomAmount = amounts[Math.floor(Math.random() * amounts.length)];
-      const randomDays = daysSinceOptions[Math.floor(Math.random() * daysSinceOptions.length)];
-      const testId = `new_${Date.now()}_${attempts}_${randomMerchant.replace(/\s/g, '')}`;
-      if (!existingIds.includes(testId)) {
-        newSub = {
-          id: testId, merchant: randomMerchant, amount: randomAmount,
-          lastCharge: (() => { const date = new Date(); date.setDate(date.getDate() - randomDays); return date.toISOString().split('T')[0]; })(),
-          daysSinceLastCharge: randomDays, flagged: true
-        };
+    try {
+      // WHY: Call the backend's detection route. Currently stubbed to return an
+      // empty list — Session 1B will make this return real subscriptions found
+      // in the user's Mono transaction history.
+      // WHY: We read the response as TEXT first (not JSON) so that non-JSON error
+      // pages (Render 404s, 502/504 gateway errors, cold-start HTML) don't crash
+      // with "Unexpected token '<'". Only parse JSON if it looks like JSON.
+      const res = await fetch(`${BACKEND_URL}/api/detect-subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: accessToken }),
+      });
+
+      const rawText = await res.text();
+      let data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        // WHY: Non-JSON response — usually a 404/502/504 HTML page from Render.
+        // Give the user a real diagnostic instead of a cryptic parse error.
+        console.error(`[detect-subscriptions] Non-JSON response (status ${res.status}):`, rawText.slice(0, 200));
+        toast.error(`Server error (${res.status}). Please try again in a moment.`);
+        return;
       }
-      attempts++;
-    }
-    if (newSub) {
-      await saveDetectedSubscription(newSub);
+
+      if (!res.ok) {
+        // WHY: Prefer the backend's own error message if it sent one.
+        toast.error(data.error || `Request failed (${res.status}). Please try again.`);
+        return;
+      }
+
+      // WHY: No fabricated data. If detection is not implemented yet, be honest.
+      if (data.notImplemented) {
+        toast.info('Detection engine is being upgraded. Please check back soon.');
+        return;
+      }
+
+      if (!data.subscriptions || data.subscriptions.length === 0) {
+        toast.info('No forgotten subscriptions found.');
+        return;
+      }
+
+      // WHY: Persist each detected subscription so it survives refresh.
+      // (Session 1B: backend will return real ones. This write path is ready.)
+      for (const sub of data.subscriptions) {
+        await saveDetectedSubscription(sub);
+      }
       await loadData();
-      toast.success(`New forgotten subscription detected! ${newSub.merchant} - ${formatAmount(newSub.amount)}`);
-    } else {
-      toast.info('No new forgotten subscriptions found after many attempts!');
+      toast.success(`Detected ${data.subscriptions.length} subscription(s).`);
+    } catch (error) {
+      console.error('Error detecting forgotten subscriptions:', error);
+      toast.error('Something went wrong. Please try again.');
     }
   };
 
-  const handleConnectBank = () => {
-    import('@mono.co/connect.js').then((MonoConnect) => {
-      const config = {
+   const handleConnectBank = async () => {
+    // WHY: Fetch the authenticated user BEFORE opening Mono so we can pass their
+    // real name/email instead of a hardcoded placeholder.
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+
+    import('@mono.co/connect.js').then((MonoConnect) => {      
+        const config = {
         key: import.meta.env.VITE_MONO_PUBLIC_KEY,
-        data: { customer: { name: "SubSaver User", email: "user@subsaver.com" } },
+        // WHY: Send the real logged-in user's identity to Mono instead of a
+        // hardcoded placeholder. Falls back to neutral strings if metadata missing.
+        data: {
+          customer: {
+            name: currentUser?.user_metadata?.full_name || 'SubSaver User',
+            email: currentUser?.email || 'user@subsaver.com',
+          },
+        },
         onSuccess: async (response) => {
           const monoCode = response.code;
           if (monoCode) {
@@ -646,7 +693,9 @@ export default function Dashboard() {
     localStorage.removeItem('subsaver_token');
     localStorage.removeItem('subsaver_mode');
     await supabase.auth.signOut();
-    navigate('/');
+    // WHY: Users logging out want to log back in, not browse the marketing page.
+    // Sending them to /login gives them the form immediately.
+    navigate('/login');
   };
 
   useEffect(() => {
@@ -751,24 +800,30 @@ export default function Dashboard() {
   const totalMonthly = subscriptions.reduce((sum, s) => sum + s.amount, 0);
   const potentialSavings = flagged.reduce((sum, s) => sum + s.amount, 0);
 
-  // WHY: Premium users see everything. Free users see only first FREE_TIER_LIMIT subs.
-  const visibleSubs = isPremium ? subscriptions : subscriptions.slice(0, FREE_TIER_LIMIT);
-  const hiddenSubs = isPremium ? [] : subscriptions.slice(FREE_TIER_LIMIT);
+  const searchLower = searchQuery.trim().toLowerCase();
+
+  // WHY: Order of operations matters here.
+  //   1. Filter by search (if any) across ALL subs
+  //   2. Sort that filtered list
+  //   3. THEN slice for free-tier gating
+  // This ensures sort actually surfaces the largest/oldest/alphabetical subs
+  // into the visible window.
+  const searchedSubs = searchLower
+    ? subscriptions.filter(s => s.merchant.toLowerCase().includes(searchLower))
+    : subscriptions;
+
+  const sortedSubs = applySort(searchedSubs);
+
+  // WHY: Premium users see everything. Free users see only first FREE_TIER_LIMIT
+  // of the SORTED list — so the top of the sort lands in the visible window.
+  const visibleSubs = isPremium ? sortedSubs : sortedSubs.slice(0, FREE_TIER_LIMIT);
+  const hiddenSubs = isPremium ? [] : sortedSubs.slice(FREE_TIER_LIMIT);
   const hiddenMonthlyUSD = hiddenSubs.reduce((sum, s) => sum + s.amount, 0);
   const hiddenAnnualNGN = Math.round(hiddenMonthlyUSD * CURRENCY.rate * 12);
 
-  const searchLower = searchQuery.trim().toLowerCase();
-
-  // WHY: Apply sort to visible lists before filtering by search.
-  const flaggedSorted = applySort(visibleSubs.filter(s => s.flagged === true));
-  const activeSorted = applySort(visibleSubs.filter(s => s.flagged !== true));
-
-  const flaggedFiltered = searchLower
-    ? flaggedSorted.filter(s => s.merchant.toLowerCase().includes(searchLower))
-    : flaggedSorted;
-  const activeFiltered = searchLower
-    ? activeSorted.filter(s => s.merchant.toLowerCase().includes(searchLower))
-    : activeSorted;
+  // WHY: Split visible subs into flagged vs active sections AFTER sort+slice.
+  const flaggedFiltered = visibleSubs.filter(s => s.flagged === true);
+  const activeFiltered = visibleSubs.filter(s => s.flagged !== true);
 
   const upcomingRenewals = subscriptions
     .filter(s => getDaysUntilRenewal(s.daysSinceLastCharge) <= 7)
@@ -787,12 +842,7 @@ export default function Dashboard() {
       <nav className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-600/25">
-                <CreditCard className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-base font-bold text-slate-900 tracking-tight">SubSaver</span>
-            </div>
+            <Logo size={36} textSize="md" />
 
             <div className="hidden md:flex items-center gap-2">
               <button
@@ -956,12 +1006,11 @@ export default function Dashboard() {
             )}
 
             <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
-              {/* WHY: Sort dropdown — backdrop rendered FIRST (behind), menu SECOND (in front).
-                  This ordering prevents the click-outside backdrop from stealing clicks meant for the menu. */}
+              {/* WHY: Sort dropdown — backdrop rendered FIRST (behind), menu SECOND (in front). */}
               <div className="relative flex-shrink-0">
                 <button
                   onClick={() => setShowSortMenu(prev => !prev)}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 transition-all"
+                  className="inline-flex items-center gap-2 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 hover:from-blue-600 hover:via-blue-700 hover:to-blue-800 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 transition-all duration-200 hover:-translate-y-0.5"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
                   {sortLabel}
@@ -970,12 +1019,10 @@ export default function Dashboard() {
 
                 {showSortMenu && (
                   <>
-                    {/* WHY: Invisible click-catcher rendered FIRST so it sits behind the menu in z-order */}
                     <div
                       className="fixed inset-0 z-20"
                       onClick={() => setShowSortMenu(false)}
                     ></div>
-                    {/* WHY: Menu rendered SECOND with higher z-index → receives clicks reliably */}
                     <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl shadow-slate-900/10 border border-slate-200 overflow-hidden z-30 animate-fade-in">
                       {sortOptions.map(opt => (
                         <button
@@ -1056,7 +1103,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* WHY: Hero spend card — now uses the same premium dark gradient as the top banner. */}
+            {/* WHY: Hero spend card — uses premium dark gradient matching the banner. */}
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-blue-900 p-6 sm:p-8 mb-6 shadow-2xl shadow-slate-900/30 text-white">
               <div className="absolute -top-24 -right-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
               <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>

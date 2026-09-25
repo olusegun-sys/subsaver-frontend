@@ -1,9 +1,10 @@
 ﻿import { useNavigate } from 'react-router-dom';
 import {
-  CreditCard, ArrowRight, CheckCircle, Wallet, Eye, Zap, Sparkles,
+  ArrowRight, CheckCircle, Wallet, Eye, Zap, Sparkles,
   Users, Shield, TrendingUp, Bell, Star, Menu, X, Quote
 } from 'lucide-react';
 import { useState } from 'react';
+import Logo from '../components/Logo';
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -27,11 +28,9 @@ export default function LandingPage() {
       <nav className="bg-white/95 backdrop-blur-md sticky top-0 z-50 border-b border-slate-200/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => scrollToSection('home')}>
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-600/25">
-                <CreditCard className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-lg font-bold text-slate-900 tracking-tight">SubSaver</span>
+            {/* Brand */}
+            <div className="cursor-pointer" onClick={() => scrollToSection('home')}>
+              <Logo size={36} textSize="md" />
             </div>
 
             <div className="hidden md:flex items-center gap-8">
@@ -346,9 +345,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-                <CreditCard className="w-4 h-4 text-white" />
-              </div>
+              <Logo size={32} showText={false} />
               <span className="text-base font-bold text-white">SubSaver</span>
             </div>
             <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
